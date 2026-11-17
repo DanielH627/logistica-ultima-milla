@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Application/">
+    <Project Path="src/Application/LogisticaUltimaMilla.Application.csproj" />
+  </Folder>
+  <Folder Name="/src/Domain/">
+    <Project Path="src/Domain/LogisticaUltimaMilla.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/LogisticaUltimaMilla.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Application.Tests/">
+    <Project Path="tests/Application.Tests/LogisticaUltimaMilla.Application.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Domain.Tests/">
+    <Project Path="tests/Domain.Tests/LogisticaUltimaMilla.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Integration.Tests/">
+    <Project Path="tests/Integration.Tests/LogisticaUltimaMilla.Integration.Tests.csproj" />
+  </Folder>
+</Solution>
