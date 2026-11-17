@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- La infraestructura depende de la aplicación (que define los puertos) y, por transitividad, del dominio. -->
+  <PropertyGroup>
+    <RootNamespace>LogisticaUltimaMilla.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Application\LogisticaUltimaMilla.Application.csproj" />
+  </ItemGroup>
+
+</Project>
