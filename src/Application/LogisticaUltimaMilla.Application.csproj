@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- La aplicación depende solo del dominio. Nunca de la infraestructura. -->
+  <PropertyGroup>
+    <RootNamespace>LogisticaUltimaMilla.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\LogisticaUltimaMilla.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
