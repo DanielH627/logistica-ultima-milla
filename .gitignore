@@ -1,0 +1,9 @@
+# Compilación de .NET
+bin/
+obj/
+TestResults/
+
+# Visual Studio y VS Code
+.vs/
+*.user
+*.suo
