@@ -7,7 +7,7 @@
 | **Autor** | [Tu nombre completo] |
 | **Actividad** | Actividad 2: requisitos y decisión estructural |
 | **Reemplaza a** | Ninguna |
-| **Decisiones relacionadas** | D01, D06, D07 y D12 de la Actividad 1; ADR-002 pendiente (fuente de la verdad) |
+| **Decisiones relacionadas** | D01, D06, D07 y D12 de la Actividad 1; ADR-002 a ADR-005 (Actividad 3); decisión pendiente, sin número, sobre la fuente de la verdad |
 
 ## 1. Contexto
 
@@ -118,7 +118,7 @@ La decisión es sólida en el perfil base y **sensible a un cambio de supuestos*
 | A2-S01: equipo pequeño | Una estructura más distribuida sería viable |
 | A2-S02 y A2-S06: volumen moderado con picos y crecimiento gradual | Habría que priorizar la escalabilidad desde el inicio |
 | A2-S03: sin capacidad de operar muchos servicios | El costo operativo de la Opción B bajaría |
-| **Hipótesis provisional sobre la fuente de la verdad** (catálogo, sección 6): la plataforma es la fuente del estado del pedido y de las reservas; el ERP/CRM, de los datos maestros y las existencias oficiales | Se revisa el ADR; podría requerir ADR-002 y cambios en los módulos Inventario e integración |
+| **Hipótesis provisional sobre la fuente de la verdad** (catálogo, sección 6): la plataforma es la fuente del estado del pedido y de las reservas; el ERP/CRM, de los datos maestros y las existencias oficiales | Se revisa el ADR; podría requerir un ADR nuevo y cambios en los módulos Inventario e integración |
 
 ## 8. Cómo se verificará
 
@@ -148,8 +148,8 @@ La decisión se revisa si ocurre alguna de estas condiciones. Todas las cifras s
 
 ## 10. Decisiones pendientes relacionadas
 
-- **ADR-002 (pendiente):** fuente de la verdad del inventario y del estado del pedido (decisión D12 de la Actividad 1). Se redactará cuando haya información del negocio.
-- **Elección de tecnologías:** se decide en actividades posteriores, una vez fijada la estructura.
+- **Decisión pendiente, sin número asignado:** fuente de la verdad del inventario y del estado del pedido (decisión D12 de la Actividad 1). Se redactará cuando haya información del negocio.
+- **Elección de tecnologías:** el lenguaje y la plataforma del esqueleto de diseño se registran en el ADR-002 (Actividad 3). Las bases de datos, los frameworks y los proveedores se deciden en la Actividad 4.
 
 ## 11. Referencias
 

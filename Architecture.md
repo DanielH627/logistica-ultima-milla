@@ -30,10 +30,10 @@ La empresa recibe pedidos por varios canales, maneja inventarios distribuidos y 
 | **Plataforma centralizada** | Una única plataforma coordina los pedidos, en lugar de que cada área conserve su propia información | `docs/actividad-1/06-supuestos-y-decisiones.md` (D01) |
 | **Monolito modular con límites de dominio** | Una sola unidad desplegable, organizada en módulos por dominio, con interfaces explícitas entre ellos | `docs/actividad-2/adr/ADR-001-estructura-de-la-plataforma.md` |
 | **Convivencia con el ERP/CRM** | La plataforma se integra con el sistema existente y no lo reemplaza | `docs/actividad-1/06-supuestos-y-decisiones.md` (D06) |
-| **Tres capas con dependencias hacia adentro** | Dominio, aplicación e infraestructura, con puertos y adaptadores | ADR de la Actividad 3 |
-| **Coordinación entre Entregas y Ruteo** | Reserva previa del cupo con liberación compensatoria | ADR de la Actividad 3 |
-| **Rechazos de negocio como resultados** | Códigos estables en lugar de excepciones | ADR de la Actividad 3 |
-| **C# sobre .NET 10 para el esqueleto de diseño** | Solo el lenguaje y la plataforma; no se eligen aún bases de datos ni proveedores | ADR de la Actividad 3 |
+| **Tres capas con dependencias hacia adentro** | Dominio, aplicación e infraestructura, con puertos y adaptadores | `docs/actividad-3/adr/ADR-003-capas-y-dependencias.md` |
+| **Coordinación entre Entregas y Ruteo** | Reserva previa del cupo con liberación compensatoria | `docs/actividad-3/adr/ADR-004-coordinacion-entre-entregas-y-ruteo.md` |
+| **Rechazos de negocio como resultados** | Códigos estables en lugar de excepciones; evento registrado tras guardar; aviso que no revierte la asignación | `docs/actividad-3/adr/ADR-005-rechazos-eventos-y-avisos.md` |
+| **C# sobre .NET 10 para el esqueleto de diseño** | Solo el lenguaje y la plataforma; no se eligen aún bases de datos ni proveedores | `docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md` |
 | **Fuente de la verdad del inventario** | Decisión aplazada hasta contar con información del negocio | Pendiente |
 
 ![Alternativas estructurales comparadas](docs/actividad-2/diagramas/alternativas.png)
@@ -194,7 +194,7 @@ logistica-ultima-milla/
 ├── docs/
 │   ├── actividad-1/   Diagnóstico y contexto
 │   ├── actividad-2/   Requisitos y decisión estructural (incluye el ADR-001)
-│   └── actividad-3/   Dominio y diseño
+│   └── actividad-3/   Dominio y diseño (incluye los ADR-002 a ADR-005)
 ├── src/
 │   ├── Domain/
 │   ├── Application/
@@ -222,4 +222,4 @@ Las pruebas del dominio y de la aplicación no necesitan base de datos ni servic
 |-----------|------------|
 | **1. Diagnóstico y contexto** | Análisis del problema, actores, alcance, diagrama de contexto, riesgos, supuestos y decisiones |
 | **2. Requisitos y decisión estructural** | Catálogo de requisitos, matriz de priorización, escenarios de calidad, comparación de alternativas, criterios verificables y ADR-001 |
-| **3. Dominio y diseño** | Flujo de negocio, lenguaje ubicuo, modelo de dominio, invariantes y escenarios, contextos y contratos, casos de uso, puertos y adaptadores |
+| **3. Dominio y diseño** | Flujo de negocio, lenguaje ubicuo, modelo de dominio, invariantes y escenarios, contextos y contratos, casos de uso, puertos y adaptadores, y los ADR-002 a ADR-005 |
