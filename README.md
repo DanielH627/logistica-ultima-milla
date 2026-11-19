@@ -10,7 +10,6 @@ Proyecto de arquitectura de software sobre una plataforma de logística de últi
 | **1. Diagnóstico y contexto arquitectónico** | Entender el problema, los actores, el alcance y los riesgos | [`docs/actividad-1`](docs/actividad-1) | [Pendiente de publicar] |
 | **2. Requisitos y decisión estructural** | Traducir el diagnóstico en requisitos y decidir cómo se organiza la plataforma | [`docs/actividad-2`](docs/actividad-2) | [Pendiente de publicar] |
 
-> En ninguna actividad se eligen tecnologías, lenguajes ni proveedores: se decide la **estructura**, no las herramientas.
 
 ---
 
