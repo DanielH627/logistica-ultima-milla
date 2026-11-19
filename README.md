@@ -1,15 +1,18 @@
 # Plataforma de gestión logística de última milla
 
-Proyecto de arquitectura de software sobre una plataforma de logística de última milla para una empresa de retail digital. El trabajo avanza por actividades: primero se **comprende el problema**, luego se **decide la estructura** de la solución.
+Proyecto de arquitectura de software sobre una plataforma de logística de última milla para una empresa de retail digital. El trabajo avanza por actividades: primero se **comprende el problema**, luego se **decide la estructura** de la solución y, por último, se **diseña su dominio** con un esqueleto de código verificable.
 
 - **Autor:** [Tu nombre completo]
 - **Curso / institución:** [Nombre del curso e institución]
+- **Arquitectura completa:** [`Architecture.md`](Architecture.md)
 
 | Actividad | Qué resuelve | Documentos | Video |
 |-----------|--------------|------------|-------|
 | **1. Diagnóstico y contexto arquitectónico** | Entender el problema, los actores, el alcance y los riesgos | [`docs/actividad-1`](docs/actividad-1) | [Pendiente de publicar] |
 | **2. Requisitos y decisión estructural** | Traducir el diagnóstico en requisitos y decidir cómo se organiza la plataforma | [`docs/actividad-2`](docs/actividad-2) | [Pendiente de publicar] |
+| **3. Dominio y diseño** | Diseñar el modelo de dominio, sus reglas, sus límites y la separación entre negocio e infraestructura | [`docs/actividad-3`](docs/actividad-3), [`src`](src) y [`tests`](tests) | [Pendiente de publicar] |
 
+> Hasta la Actividad 2 no se elige ninguna tecnología. En la Actividad 3 se elige **únicamente** el lenguaje y la plataforma del esqueleto de diseño (C# sobre .NET 10, ver [ADR-002](docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md)); las bases de datos, los frameworks y los proveedores se deciden en la Actividad 4.
 
 ---
 
@@ -125,6 +128,117 @@ Cuatro bloques de comprobación: **estructura** (siete reglas de la decisión), 
 
 ---
 
+## Actividad 3: Dominio y diseño
+
+### Flujo diseñado
+
+Se diseña el flujo **asignar un repartidor a una entrega**: el coordinador de despacho elige una entrega pendiente y un repartidor, y la plataforma verifica las reglas, registra la asignación y avisa al repartidor. Es el núcleo de la coordinación (RF09) y cruza dos contextos, Entregas y Ruteo, lo que permite practicar límites y contratos. Ver [Flujo de negocio](docs/actividad-3/01-flujo-de-negocio.md).
+
+### Modelo de dominio
+
+| Concepto | Tipo | Contexto |
+|----------|------|----------|
+| `Delivery` | Entidad, raíz de agregado | Entregas |
+| `Route` | Entidad, raíz de agregado | Ruteo |
+| `Courier` | Entidad | Ruteo |
+| `DeliveryAddress`, `DeliveryWindow`, `DeliveryPriority`, `DeliveryStatus` | Objetos de valor | Entregas |
+| `RouteCapacity`, `Stop` | Objetos de valor | Ruteo |
+| `DeliveryAssigned` | Evento de dominio | Entregas |
+
+El glosario con los términos del negocio y sus nombres en código está en [Lenguaje ubicuo](docs/actividad-3/02-lenguaje-ubicuo.md), y el modelo con sus estados y transiciones en [Modelo de dominio](docs/actividad-3/03-modelo-de-dominio.md).
+
+### Invariantes y escenarios de aceptación
+
+Las reglas que siempre deben cumplirse están protegidas dentro del dominio:
+
+| Regla | La protege |
+|-------|------------|
+| Una entrega no puede tener más de un repartidor activo | `Delivery` |
+| Solo se asigna una entrega pendiente de asignación | `Delivery` |
+| El estado de la entrega y su repartidor son coherentes | `Delivery` |
+| Una ruta no puede superar su capacidad | `Route` |
+| Los objetos de valor no pueden existir en un estado inválido | Cada objeto de valor |
+
+Se redactaron **15 escenarios de aceptación** en formato Dado-Cuando-Entonces, uno de los cuales es:
+
+```gherkin
+Escenario: Asignar un repartidor disponible a una entrega pendiente
+  Dado una entrega "E-100" en estado "Pendiente de asignación"
+  Y un repartidor activo "Carlos" con una ruta de capacidad 8 y 5 paradas
+  Cuando el coordinador asigna a "Carlos" la entrega "E-100"
+  Entonces la entrega "E-100" queda "Asignada" a "Carlos"
+  Y se registra el evento "Entrega asignada" con la entrega, el repartidor, el coordinador y la hora
+  Y se solicita un aviso para "Carlos"
+```
+
+Ver [Invariantes y escenarios](docs/actividad-3/04-invariantes-y-escenarios.md).
+
+### Contextos y contratos
+
+![Mapa de contextos](docs/actividad-3/diagramas/mapa-de-contextos.png)
+
+Cada contexto tiene su propio modelo y su propio lenguaje, y se comunican mediante contratos versionados:
+
+| Contrato | De → A | Qué comunica |
+|----------|--------|--------------|
+| **C1** `OrderConfirmed` | Pedidos → Entregas | Un pedido quedó confirmado |
+| **C2** `CourierAvailability` | Entregas → Ruteo | ¿Puede este repartidor recibir otra entrega? |
+| **C3** Reserva de parada | Entregas → Ruteo | Reservar o liberar un cupo en la ruta |
+| **C4** `DeliveryAssigned` | Entregas → Historial | A una entrega se le asignó un repartidor |
+| **C5** Solicitud de aviso | Entregas → Notificaciones | Avisar al repartidor |
+
+Ver [Contextos y contratos](docs/actividad-3/05-contextos-y-contratos.md).
+
+### Capas, puertos y adaptadores
+
+![Capas y dirección de las dependencias](docs/actividad-3/diagramas/capas-y-dependencias.png)
+
+El código se organiza en tres capas con las **dependencias dirigidas hacia adentro**: la aplicación define los puertos y la infraestructura los implementa.
+
+| Puerto | Necesidad que expresa | Adaptador actual |
+|--------|----------------------|------------------|
+| `IDeliveryRepository` | Obtener y guardar entregas | En memoria |
+| `ICourierRoutes` | Consultar disponibilidad y reservar un cupo en la ruta | En memoria |
+| `IDomainEventPublisher` | Registrar los hechos ocurridos | En memoria |
+| `INotificationRequester` | Solicitar un aviso al repartidor | En memoria |
+| `IClock` | Obtener la hora actual | Reloj del sistema |
+
+El caso de uso `AssignCourierUseCase` coordina el flujo, y las reglas del negocio viven en el dominio. Ver [Casos de uso, puertos y adaptadores](docs/actividad-3/06-casos-de-uso-puertos-adaptadores.md).
+
+### Diagrama C4
+
+![C4 nivel 2: contenedores](docs/actividad-3/diagramas/c4-2-contenedores.png)
+
+![C4 nivel 3: componentes](docs/actividad-3/diagramas/c4-3-componentes.png)
+
+El nivel 1 (contexto) está en [`c4-1-contexto.png`](docs/actividad-3/diagramas/c4-1-contexto.png). La interfaz y el almacenamiento aparecen con línea punteada porque se construyen en la Actividad 4. La descripción completa de la arquitectura está en [`Architecture.md`](Architecture.md).
+
+### Decisiones de diseño
+
+| ADR | Decisión |
+|-----|----------|
+| [ADR-002](docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md) | C# sobre .NET 10 para el esqueleto de diseño; no incluye base de datos, frameworks ni proveedores |
+| [ADR-003](docs/actividad-3/adr/ADR-003-capas-y-dependencias.md) | Tres capas con inversión de dependencias, puertos y adaptadores |
+| [ADR-004](docs/actividad-3/adr/ADR-004-coordinacion-entre-entregas-y-ruteo.md) | Reserva previa del cupo con liberación compensatoria entre Entregas y Ruteo |
+| [ADR-005](docs/actividad-3/adr/ADR-005-rechazos-eventos-y-avisos.md) | Rechazos como resultados con códigos estables, evento registrado tras guardar y aviso que no revierte la asignación |
+
+### Cómo construir y probar
+
+Requisito: SDK de .NET 10. Desde la raíz del repositorio:
+
+```bash
+dotnet build
+dotnet test
+```
+
+Las pruebas del dominio y de la aplicación no usan base de datos ni servicios externos. Las de integración usan adaptadores en memoria y comprueban la concurrencia. En total son 38 pruebas: 22 del dominio, 13 de la aplicación y 3 de integración.
+
+### Qué queda para la Actividad 4
+
+Persistencia real, interfaz o API, integraciones con los sistemas externos y la garantía de que el evento no se pierda si falla su registro. La decisión sobre la fuente de la verdad del inventario sigue abierta.
+
+---
+
 ## Documentación
 
 ### Actividad 1
@@ -151,31 +265,64 @@ Cuatro bloques de comprobación: **estructura** (siete reglas de la decisión), 
 
 ---
 
+### Actividad 3
+
+| # | Documento | Qué responde |
+|---|-----------|--------------|
+| 1 | [Flujo de negocio](docs/actividad-3/01-flujo-de-negocio.md) | ¿Qué flujo se diseña y para qué? |
+| 2 | [Lenguaje ubicuo](docs/actividad-3/02-lenguaje-ubicuo.md) | ¿Qué significa cada término en cada contexto? |
+| 3 | [Modelo de dominio](docs/actividad-3/03-modelo-de-dominio.md) | ¿Qué entidades y objetos de valor hay, con qué estados? |
+| 4 | [Invariantes y escenarios](docs/actividad-3/04-invariantes-y-escenarios.md) | ¿Qué reglas nunca se rompen y cómo se comprueban? |
+| 5 | [Contextos y contratos](docs/actividad-3/05-contextos-y-contratos.md) | ¿Qué contextos participan y qué intercambian? |
+| 6 | [Casos de uso, puertos y adaptadores](docs/actividad-3/06-casos-de-uso-puertos-adaptadores.md) | ¿Cómo se organiza el caso de uso y hacia dónde apuntan las dependencias? |
+| ADR | [ADR-002 a ADR-005](docs/actividad-3/adr) | ¿Qué decisiones de diseño se tomaron y qué se descartó? |
+| Arq. | [Architecture.md](Architecture.md) | ¿Cómo se ve la arquitectura completa? |
+
+---
+
 ## Estructura del repositorio
 
 ```
 logistica-ultima-milla/
 ├── README.md
-└── docs/
-    ├── actividad-1/
-    │   ├── 01-analisis-del-problema.md
-    │   ├── 02-actores-y-necesidades.md
-    │   ├── 03-alcance.md
-    │   ├── 04-diagrama-de-contexto.md
-    │   ├── 05-riesgos.md
-    │   ├── 06-supuestos-y-decisiones.md
-    │   └── diagramas/
-    │       └── contexto.png
-    └── actividad-2/
-        ├── 01-catalogo-de-requisitos.md
-        ├── 02-matriz-de-priorizacion.md
-        ├── 03-escenarios-de-calidad.md
-        ├── 04-comparacion-de-alternativas.md
-        ├── 05-criterios-verificables.md
-        ├── adr/
-        │   └── ADR-001-estructura-de-la-plataforma.md
-        └── diagramas/
-            └── alternativas.png
+├── Architecture.md
+├── Directory.Build.props
+├── docs/
+│   ├── actividad-1/
+│   │   ├── 01-analisis-del-problema.md
+│   │   ├── 02-actores-y-necesidades.md
+│   │   ├── 03-alcance.md
+│   │   ├── 04-diagrama-de-contexto.md
+│   │   ├── 05-riesgos.md
+│   │   ├── 06-supuestos-y-decisiones.md
+│   │   └── diagramas/
+│   ├── actividad-2/
+│   │   ├── 01-catalogo-de-requisitos.md
+│   │   ├── 02-matriz-de-priorizacion.md
+│   │   ├── 03-escenarios-de-calidad.md
+│   │   ├── 04-comparacion-de-alternativas.md
+│   │   ├── 05-criterios-verificables.md
+│   │   ├── adr/
+│   │   │   └── ADR-001-estructura-de-la-plataforma.md
+│   │   └── diagramas/
+│   └── actividad-3/
+│       ├── 01-flujo-de-negocio.md
+│       ├── 02-lenguaje-ubicuo.md
+│       ├── 03-modelo-de-dominio.md
+│       ├── 04-invariantes-y-escenarios.md
+│       ├── 05-contextos-y-contratos.md
+│       ├── 06-casos-de-uso-puertos-adaptadores.md
+│       ├── adr/
+│       │   └── ADR-002 a ADR-005
+│       └── diagramas/
+├── src/
+│   ├── Domain/
+│   ├── Application/
+│   └── Infrastructure/
+└── tests/
+    ├── Domain.Tests/
+    ├── Application.Tests/
+    └── Integration.Tests/
 ```
 
 ---
@@ -200,4 +347,18 @@ logistica-ultima-milla/
 - [x] Decisión argumentada con trade-offs
 - [x] Registro de decisión arquitectónica (ADR)
 - [x] Criterios verificables
+- [ ] Video de sustentación entregado
+
+### Actividad 3
+- [x] Modelo de dominio definido
+- [x] Entidades y objetos de valor diferenciados
+- [x] Invariantes listados
+- [x] Lenguaje ubicuo y límites de contexto documentados
+- [x] Escenarios de aceptación escritos en Dado-Cuando-Entonces
+- [x] Casos de uso principales descritos
+- [x] Contratos de aplicación definidos
+- [x] Puertos y adaptadores propuestos con dependencias dirigidas correctamente
+- [x] Diagrama C4 actualizado
+- [x] Architecture.md y ADR actualizados
+- [x] README actualizado con la propuesta y los diagramas
 - [ ] Video de sustentación entregado
