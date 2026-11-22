@@ -9,4 +9,13 @@
     <ProjectReference Include="..\Application\LogisticaUltimaMilla.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Los scripts de migración viajan dentro del ensamblado, para que la migración sea reproducible. -->
+    <EmbeddedResource Include="Migrations\Scripts\*.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="11.0.0" />
+  </ItemGroup>
+
 </Project>
