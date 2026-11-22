@@ -14,7 +14,7 @@ Un vertical slice es una porción del sistema que recorre todas las capas. Este 
 |--------------------|-------------------|
 | Un punto de entrada HTTP para asignar un repartidor a una entrega | Pantallas o interfaz de usuario |
 | El caso de uso `AssignCourierUseCase` conectado a persistencia real | Reasignación, cancelación y los demás estados de la entrega |
-| Persistencia de entregas, repartidores, rutas y paradas | Creación de entregas desde pedidos confirmados (se usan datos de demostración) |
+| Persistencia de entregas, repartidores, rutas y paradas en PostgreSQL | Creación de entregas desde pedidos confirmados (se usan datos de demostración) |
 | Migraciones reproducibles del esquema | Integración real con un proveedor de notificaciones o de geolocalización |
 | Bandeja de salida con reintentos y mensajes fallidos para los avisos | Asignación automática por algoritmo |
 | Pruebas unitarias, de integración y de arquitectura | Autenticación completa de usuarios |
@@ -29,7 +29,7 @@ Implementar casi siempre revela detalles que el diseño no tenía. Estos ajustes
 | AJ-01 | El evento `DeliveryAssigned` se guarda en una **bandeja de salida** dentro de la misma transacción que la entrega, en lugar de publicarse después de guardar | Elimina el riesgo de evento perdido que el ADR-005 dejó para esta actividad |
 | AJ-02 | El caso de uso deja de invocar directamente `IDomainEventPublisher` e `INotificationRequester`; el repositorio persiste los eventos y un procesador los entrega | Consecuencia de AJ-01 |
 | AJ-03 | El campo `NoticeRequested` del resultado pasa a significar que el aviso **quedó encolado** | Con la bandeja de salida, el aviso ya no se envía dentro de la solicitud |
-| AJ-04 | Ruteo se persiste en las **mismas bases, en tablas propias del módulo** | Respeta la separación de datos por módulo del ADR-001 sin multiplicar los almacenes |
+| AJ-04 | Ruteo se persiste en la **misma base de datos, en un esquema propio del módulo** | Respeta la separación de datos por módulo del ADR-001 sin multiplicar los almacenes |
 | AJ-05 | Los datos de demostración se cargan con una **semilla en el entorno de desarrollo** | La creación de entregas desde pedidos queda fuera del slice |
 | AJ-06 | Las reservas de cupo pueden llevar **vencimiento** | Mitigación prevista en el ADR-004 para un cupo reservado sin entrega guardada |
 
@@ -52,15 +52,15 @@ Cada decisión se registrará en un ADR con sus alternativas y trade-offs.
 | ID | Decisión | Alternativa descartada | Razón principal |
 |----|----------|------------------------|-----------------|
 | D4-01 | **Punto de entrada HTTP** (API mínima de ASP.NET Core) | Línea de comandos | Representa un punto de entrada real y permite probar el contrato completo |
-| D4-02 | **Persistencia relacional con SQLite** | PostgreSQL, almacenamiento en documentos | Funciona sin instalar un servidor ni usar contenedores, y permite reproducir el entorno con un solo comando. El adaptador es reemplazable por otro motor sin tocar el dominio ni la aplicación |
-| D4-03 | **Acceso a datos con SQL parametrizado**, sin ORM | ORM completo | Control explícito del SQL, de la concurrencia y de las migraciones, con menos dependencias |
+| D4-02 | **Persistencia relacional con PostgreSQL**, ejecutada con contenedores | SQLite, almacenamiento en documentos | Es un motor realista para este tipo de plataforma, ofrece bloqueos de fila que permiten proteger la capacidad de la ruta bajo concurrencia (INV04) y se reproduce con un archivo de composición. El adaptador sigue siendo reemplazable sin tocar el dominio ni la aplicación |
+| D4-03 | **Acceso a datos con SQL parametrizado** mediante el controlador del motor, sin ORM | ORM completo | Control explícito del SQL, de la concurrencia y de las migraciones, con menos dependencias |
 | D4-04 | **Migraciones SQL versionadas** con un ejecutor propio y tabla de historial | Herramienta de migraciones externa | Mantiene el principio de migraciones reproducibles y versionadas sin agregar una herramienta para un esquema pequeño |
 | D4-05 | **Estado durable con bandeja de salida**, sin event sourcing | Event sourcing | El estado actual es lo que consulta el negocio; el registro de eventos sirve de historial, no de fuente de verdad |
 | D4-06 | **Procesamiento con productor y consumidor sobre la bandeja de salida**, con reintentos y mensajes fallidos | Envío directo sin reintentos | Una falla del sistema de notificaciones no debe perder el aviso ni deshacer la asignación |
 | D4-07 | **Autenticación mínima por clave de API** | Sin autenticación, o autenticación completa de usuarios | Protege el punto de entrada con un costo bajo y deja documentada la limitación |
 | D4-08 | **Observabilidad con registros estructurados, métricas y verificación de salud**, sin datos personales | Registros de texto libre | Permite diagnosticar el flujo sin exponer información sensible |
 | D4-09 | **Pruebas de arquitectura automatizadas** como funciones de aptitud | Revisión manual de las dependencias | Las reglas de dependencia se verifican en cada ejecución de las pruebas |
-| D4-10 | **Integración continua** que compila, prueba y revisa vulnerabilidades en cada cambio | Verificación manual | Evidencia reproducible de la calidad |
+| D4-10 | **Integración continua** que compila, prueba contra una base de datos real y revisa vulnerabilidades en cada cambio | Verificación manual | Evidencia reproducible de la calidad |
 | D4-11 | **Un único tronco de trabajo**, con cambios pequeños y frecuentes | Ramas de larga vida | Coincide con la decisión de no usar ramas ya tomada en el proyecto |
 
 ## 6. Contrato de entrada (borrador)
@@ -89,17 +89,17 @@ La entrada solo valida la forma de los datos y los traduce al comando del caso d
 
 ## 7. Modelo de datos (borrador)
 
-Las tablas se agrupan por módulo, con un prefijo que deja visible a quién pertenece cada una.
+Cada módulo tiene su propio **esquema** dentro de la base de datos, lo que deja visible a quién pertenece cada tabla y refuerza la separación de datos entre módulos.
 
 | Tabla | Módulo | Contenido |
 |-------|--------|-----------|
-| `entregas_entrega` | Entregas | Entregas con su estado, repartidor asignado y número de versión |
-| `ruteo_repartidor` | Ruteo | Repartidores y si están activos |
-| `ruteo_ruta` | Ruteo | Rutas con su capacidad |
-| `ruteo_parada` | Ruteo | Paradas reservadas por ruta, con vencimiento opcional |
-| `transversal_bandeja_salida` | Transversal | Mensajes pendientes, enviados o fallidos, con intentos y último error |
-| `transversal_historial_eventos` | Transversal | Historial de eventos de cada pedido |
-| `historial_migraciones` | Infraestructura | Migraciones aplicadas y su verificación |
+| `entregas.entrega` | Entregas | Entregas con su estado, repartidor asignado y número de versión |
+| `ruteo.repartidor` | Ruteo | Repartidores y si están activos |
+| `ruteo.ruta` | Ruteo | Rutas con su capacidad |
+| `ruteo.parada` | Ruteo | Paradas reservadas por ruta, con vencimiento opcional |
+| `transversal.bandeja_salida` | Transversal | Mensajes pendientes, enviados o fallidos, con intentos y último error |
+| `transversal.historial_eventos` | Transversal | Historial de eventos de cada pedido |
+| `public.historial_migraciones` | Infraestructura | Migraciones aplicadas y su verificación |
 
 Ninguna tabla guarda nombres, direcciones o datos de contacto de los clientes en los mensajes de la bandeja de salida: solo identificadores.
 
@@ -153,7 +153,7 @@ El enunciado pide seleccionar los videos de implementación según las decisione
 |-------|---------------|-------------------|
 | **Unitarias del dominio** | Las invariantes, sin infraestructura | Las 22 existentes |
 | **Del caso de uso con dobles** | La coordinación, con puertos simulados | Las 13 existentes, ajustadas por AJ-01 a AJ-03 |
-| **De integración con persistencia real** | El flujo completo contra la base de datos, incluida la concurrencia | Las 3 existentes, más las que cubran persistencia, migraciones y la bandeja de salida |
+| **De integración con persistencia real** | El flujo completo contra PostgreSQL, incluida la concurrencia. Se ejecutan cuando hay una base disponible (variable de entorno) y se omiten con un aviso cuando no la hay | Las 3 existentes, más las que cubran persistencia, migraciones y la bandeja de salida |
 | **De integración del punto de entrada** | El contrato HTTP de extremo a extremo | Camino correcto y rechazos principales |
 | **De arquitectura** | Las reglas de dependencia entre capas | Una por regla |
 
@@ -181,7 +181,7 @@ El detalle, los riesgos y la evidencia de cada mitigación se documentarán en e
 | Paso | Contenido | Resultado verificable |
 |------|-----------|-----------------------|
 | 1 | Este plan y sus decisiones | Documento revisado |
-| 2 | Persistencia: esquema, migraciones y repositorios | Pruebas de integración de los repositorios |
+| 2 | Persistencia con PostgreSQL: esquema, migraciones y repositorios | Pruebas de integración de los repositorios |
 | 3 | Bandeja de salida y ajuste del caso de uso | Pruebas del flujo con eventos persistidos |
 | 4 | Entrada HTTP, validación y composición | Pruebas del contrato HTTP |
 | 5 | Procesador, reintentos y mensajes fallidos | Pruebas de fallas del sistema de notificaciones |
@@ -210,7 +210,7 @@ Esta tabla se completa a medida que se construye.
 
 ## 14. Por confirmar
 
-1. Si se prefiere PostgreSQL en lugar de SQLite. El diseño lo permite, y solo cambiaría el adaptador, a cambio de instalar un servidor o usar contenedores.
+1. Si el equipo dispone de Docker. Si no, se puede usar un PostgreSQL instalado localmente con la misma cadena de conexión.
 2. Si el docente espera una herramienta de migraciones específica.
 3. Si la solución debe poder ejecutarse con contenedores.
 4. El tiempo de espera y el número de reintentos de los avisos (supuestos: tres intentos con espera creciente).
