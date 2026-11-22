@@ -1,0 +1,22 @@
+# Base de datos de desarrollo y de pruebas.
+# Las credenciales son SOLO para uso local. No se usan en ningún entorno compartido.
+services:
+  postgres:
+    image: postgres:17
+    container_name: logistica-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: logistica
+    ports:
+      - "5432:5432"
+    volumes:
+      - logistica-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d logistica"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  logistica-pgdata:
