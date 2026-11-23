@@ -7,6 +7,7 @@ namespace LogisticaUltimaMilla.Infrastructure.Persistence;
 /// <summary>
 /// Adaptador en memoria del puerto IDeliveryRepository. Sirve para probar el flujo sin base de datos.
 /// Guarda copias y controla la concurrencia con un número de versión, como lo haría una base real.
+/// Como el repositorio real, registra los eventos de dominio junto con la entrega (SavedEvents).
 /// </summary>
 public sealed class InMemoryDeliveryRepository : IDeliveryRepository
 {
@@ -22,7 +23,20 @@ public sealed class InMemoryDeliveryRepository : IDeliveryRepository
         int Version);
 
     private readonly Dictionary<DeliveryId, StoredDelivery> _store = new();
+    private readonly List<IDomainEvent> _savedEvents = new();
     private readonly object _gate = new();
+
+    /// <summary>Eventos guardados junto con las entregas. Equivale a la bandeja de salida.</summary>
+    public IReadOnlyList<IDomainEvent> SavedEvents
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _savedEvents.ToList();
+            }
+        }
+    }
 
     public Task<Delivery?> GetAsync(DeliveryId id, CancellationToken cancellationToken = default)
     {
@@ -71,6 +85,8 @@ public sealed class InMemoryDeliveryRepository : IDeliveryRepository
                 delivery.CourierId,
                 delivery.AssignedAt,
                 currentVersion + 1);
+
+            _savedEvents.AddRange(delivery.DomainEvents);
         }
 
         return Task.CompletedTask;

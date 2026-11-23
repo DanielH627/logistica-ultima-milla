@@ -11,6 +11,10 @@ public interface IDeliveryRepository
 {
     Task<Delivery?> GetAsync(DeliveryId id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Guarda la entrega y, en la misma operación, los eventos de dominio que tenga pendientes
+    /// (bandeja de salida). Si la entrega no se puede guardar, tampoco se guardan sus eventos.
+    /// </summary>
     /// <exception cref="DeliveryConcurrencyException">
     /// La entrega cambió desde que fue leída (control de concurrencia optimista).
     /// </exception>

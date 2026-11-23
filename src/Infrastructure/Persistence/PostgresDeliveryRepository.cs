@@ -1,6 +1,7 @@
 using LogisticaUltimaMilla.Application.Ports;
 using LogisticaUltimaMilla.Domain.Entregas;
 using LogisticaUltimaMilla.Domain.Shared;
+using LogisticaUltimaMilla.Infrastructure.Outbox;
 using LogisticaUltimaMilla.Infrastructure.Postgres;
 using Npgsql;
 
@@ -10,6 +11,8 @@ namespace LogisticaUltimaMilla.Infrastructure.Persistence;
 /// Adaptador del puerto IDeliveryRepository sobre PostgreSQL.
 /// El dominio no cambia para conectarse a la base: este adaptador solo traduce entre filas y objetos.
 /// El control de concurrencia es optimista: se guarda únicamente si la versión no cambió desde la lectura.
+/// Los eventos de dominio de la entrega se guardan en la bandeja de salida dentro de la MISMA transacción:
+/// o se guardan la entrega y sus eventos, o no se guarda nada.
 /// </summary>
 public sealed class PostgresDeliveryRepository : IDeliveryRepository
 {
@@ -73,6 +76,10 @@ public sealed class PostgresDeliveryRepository : IDeliveryRepository
             await UpdateAsync(connection, transaction, delivery, cancellationToken);
         }
 
+        // Si la entrega no se pudo guardar, la excepción ya salió y esta línea no se ejecuta:
+        // los eventos de una operación fallida nunca llegan a la bandeja de salida.
+        await InsertOutboxMessagesAsync(connection, transaction, delivery, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
     }
 
@@ -133,6 +140,33 @@ public sealed class PostgresDeliveryRepository : IDeliveryRepository
         {
             // La entrega cambió desde que se leyó (control de concurrencia optimista).
             throw new DeliveryConcurrencyException(delivery.Id);
+        }
+    }
+
+    private static async Task InsertOutboxMessagesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Delivery delivery,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO transversal.bandeja_salida
+                (id, aggregate_id, message_type, payload, occurred_at)
+            VALUES
+                (@id, @aggregate_id, @message_type, @payload, @occurred_at)
+            """;
+
+        foreach (var domainEvent in delivery.DomainEvents)
+        {
+            var message = OutboxEventSerializer.ToMessage(domainEvent);
+
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.AddUuid("id", Guid.NewGuid());
+            command.AddUuid("aggregate_id", message.AggregateId);
+            command.AddText("message_type", message.MessageType);
+            command.AddJsonb("payload", message.Payload);
+            command.AddTimestampTz("occurred_at", message.OccurredAt);
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 

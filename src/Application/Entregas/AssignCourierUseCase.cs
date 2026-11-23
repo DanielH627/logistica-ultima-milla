@@ -9,26 +9,23 @@ namespace LogisticaUltimaMilla.Application.Entregas;
 /// Coordina la intención. Las reglas del negocio viven en el dominio (Delivery, Route);
 /// este caso de uso solo las invoca, consulta los puertos y decide ante las fallas.
 /// Recibe sus dependencias por constructor y solo conoce interfaces.
+///
+/// Ajuste de la Actividad 4 (AJ-01 a AJ-03): el caso de uso ya no publica eventos ni solicita avisos
+/// directamente. Los eventos se guardan junto con la entrega y un procesador los entrega después.
 /// </summary>
 public sealed class AssignCourierUseCase
 {
     private readonly IDeliveryRepository _deliveries;
     private readonly ICourierRoutes _courierRoutes;
-    private readonly IDomainEventPublisher _events;
-    private readonly INotificationRequester _notifications;
     private readonly IClock _clock;
 
     public AssignCourierUseCase(
         IDeliveryRepository deliveries,
         ICourierRoutes courierRoutes,
-        IDomainEventPublisher events,
-        INotificationRequester notifications,
         IClock clock)
     {
         _deliveries = deliveries;
         _courierRoutes = courierRoutes;
-        _events = events;
-        _notifications = notifications;
         _clock = clock;
     }
 
@@ -103,7 +100,8 @@ public sealed class AssignCourierUseCase
                 : RejectBecauseUnavailable(UnavailabilityReason.CourierNotActive, command.CourierId);
         }
 
-        // 6. Guardar. Si otra operación modificó la entrega, se libera el cupo reservado (compensación).
+        // 6. Guardar la entrega junto con sus eventos (INV06). Si otra operación modificó la entrega,
+        //    no se guarda nada y se libera el cupo reservado (compensación).
         try
         {
             await _deliveries.SaveAsync(delivery, cancellationToken);
@@ -122,22 +120,11 @@ public sealed class AssignCourierUseCase
             throw;
         }
 
-        // 7. Registrar el resultado mediante un adaptador (INV06).
-        await _events.PublishAsync(delivery.DomainEvents, cancellationToken);
+        // 7. Los eventos ya quedaron guardados con la entrega (bandeja de salida): se limpian del agregado.
+        //    El historial y el aviso al repartidor los entrega un procesador, fuera de esta solicitud.
         delivery.ClearDomainEvents();
 
-        // 8. Solicitar el aviso al repartidor. Si falla, la asignación se mantiene (contrato C5).
-        var noticeRequested = true;
-        try
-        {
-            await _notifications.RequestCourierAssignedNoticeAsync(courierId, deliveryId, cancellationToken);
-        }
-        catch (NotificationRequestFailedException)
-        {
-            noticeRequested = false;
-        }
-
-        return AssignCourierResult.Success(delivery.AssignedAt ?? _clock.UtcNow, noticeRequested);
+        return AssignCourierResult.Success(delivery.AssignedAt ?? _clock.UtcNow, noticeQueued: true);
     }
 
     private static AssignCourierResult AvailabilityUnverifiable()

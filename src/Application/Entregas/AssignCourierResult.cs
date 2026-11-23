@@ -15,15 +15,19 @@ public static class AssignCourierErrorCodes
 /// Contrato de salida del caso de uso. Un rechazo de negocio es un resultado esperado,
 /// no una excepción: el consumidor recibe un código estable y un mensaje legible.
 /// </summary>
+/// <param name="NoticeQueued">
+/// Indica que el aviso al repartidor quedó encolado: el evento que lo origina se guardó junto con la entrega.
+/// Que el aviso llegue o no depende del procesador de la bandeja de salida, no de esta solicitud.
+/// </param>
 public sealed record AssignCourierResult(
     bool IsSuccess,
     string? ErrorCode,
     string? ErrorMessage,
     DateTimeOffset? AssignedAt,
-    bool NoticeRequested)
+    bool NoticeQueued)
 {
-    public static AssignCourierResult Success(DateTimeOffset assignedAt, bool noticeRequested)
-        => new(true, null, null, assignedAt, noticeRequested);
+    public static AssignCourierResult Success(DateTimeOffset assignedAt, bool noticeQueued)
+        => new(true, null, null, assignedAt, noticeQueued);
 
     public static AssignCourierResult Failure(string errorCode, string errorMessage)
         => new(false, errorCode, errorMessage, null, false);
