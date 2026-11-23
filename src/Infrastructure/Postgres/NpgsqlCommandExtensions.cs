@@ -21,6 +21,9 @@ internal static class NpgsqlCommandExtensions
             Value = value is null ? DBNull.Value : (object)value
         });
 
+    public static void AddJsonb(this NpgsqlCommand command, string name, string value) =>
+        command.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Jsonb) { Value = value });
+
     public static void AddInteger(this NpgsqlCommand command, string name, int? value) =>
         command.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Integer)
         {
