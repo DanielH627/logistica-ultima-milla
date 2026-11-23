@@ -122,7 +122,6 @@ El enunciado pide decidir, ante cada fallo, si se reintenta, se registra, se dev
 
 El enunciado pide seleccionar los videos de implementación según las decisiones tomadas, y justificar qué patrones o tecnologías aplican y cuáles no.
 
-> Esta tabla se basa en los **títulos** de los videos, porque no he visto su contenido. Se ajustará cuando se revisen.
 
 | Video | Tema | ¿Aplica? | Justificación |
 |-------|------|----------|---------------|
@@ -200,13 +199,13 @@ Esta tabla se completa a medida que se construye.
 | Elemento del diseño | Documento | Implementación | Estado |
 |---------------------|-----------|----------------|--------|
 | `Delivery` y sus invariantes | `03-modelo-de-dominio.md` | `src/Domain/Entregas` | Hecho |
-| Caso de uso `AssignCourier` | `06-casos-de-uso-puertos-adaptadores.md` | `src/Application/Entregas` | Hecho, por ajustar (AJ-01 a AJ-03) |
-| Repositorio de entregas | Puerto `IDeliveryRepository` | Persistencia real | Pendiente |
-| Consulta y reserva en Ruteo | Contratos C2 y C3 | Persistencia real | Pendiente |
-| Evento `DeliveryAssigned` | Contrato C4 | Bandeja de salida | Pendiente |
+| Caso de uso `AssignCourier` | `06-casos-de-uso-puertos-adaptadores.md` | `src/Application/Entregas` | Hecho, ajustado por AJ-01 a AJ-03 |
+| Repositorio de entregas | Puerto `IDeliveryRepository` | `PostgresDeliveryRepository` | Hecho |
+| Consulta y reserva en Ruteo | Contratos C2 y C3 | `PostgresCourierRoutes` | Hecho |
+| Evento `DeliveryAssigned` | Contrato C4 | Bandeja de salida (`transversal.bandeja_salida`) | Guardado: hecho. Entrega por el procesador: pendiente |
 | Solicitud de aviso | Contrato C5 | Procesador y adaptador | Pendiente |
 | Entrada del coordinador | Contrato de aplicación | Punto de entrada HTTP | Pendiente |
-| Escenarios EA01 a EA15 | `04-invariantes-y-escenarios.md` | Pruebas | Parcial: 38 pruebas existentes |
+| Escenarios EA01 a EA15 | `04-invariantes-y-escenarios.md` | Pruebas | Parcial: 67 pruebas, con persistencia real para EA01, EA08, EA09, EA11 y EA12 |
 
 ## 14. Por confirmar
 
