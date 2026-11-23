@@ -14,6 +14,9 @@ internal sealed class FakeDeliveryRepository : IDeliveryRepository
 
     public bool ThrowConcurrencyOnSave { get; set; }
 
+    /// <summary>Eventos guardados junto con las entregas. Equivale a la bandeja de salida.</summary>
+    public List<IDomainEvent> SavedEvents { get; } = new();
+
     public void Add(Delivery delivery) => _items[delivery.Id] = delivery;
 
     public Delivery? Find(DeliveryId id) => _items.TryGetValue(id, out var delivery) ? delivery : null;
@@ -25,11 +28,13 @@ internal sealed class FakeDeliveryRepository : IDeliveryRepository
     {
         if (ThrowConcurrencyOnSave)
         {
+            // Como el repositorio real: si no se puede guardar la entrega, tampoco se guardan sus eventos.
             throw new DeliveryConcurrencyException(delivery.Id);
         }
 
         SaveCount++;
         _items[delivery.Id] = delivery;
+        SavedEvents.AddRange(delivery.DomainEvents);
         return Task.CompletedTask;
     }
 }
@@ -65,35 +70,6 @@ internal sealed class FakeCourierRoutes : ICourierRoutes
     public Task ReleaseStopAsync(CourierId courierId, DeliveryId deliveryId, CancellationToken cancellationToken = default)
     {
         ReleaseCalls++;
-        return Task.CompletedTask;
-    }
-}
-
-internal sealed class CapturingEventPublisher : IDomainEventPublisher
-{
-    public List<IDomainEvent> Published { get; } = new();
-
-    public Task PublishAsync(IReadOnlyCollection<IDomainEvent> events, CancellationToken cancellationToken = default)
-    {
-        Published.AddRange(events);
-        return Task.CompletedTask;
-    }
-}
-
-internal sealed class CapturingNotifier : INotificationRequester
-{
-    public List<(CourierId CourierId, DeliveryId DeliveryId)> Requests { get; } = new();
-
-    public bool ShouldFail { get; set; }
-
-    public Task RequestCourierAssignedNoticeAsync(CourierId courierId, DeliveryId deliveryId, CancellationToken cancellationToken = default)
-    {
-        if (ShouldFail)
-        {
-            throw new NotificationRequestFailedException("El sistema de notificaciones no responde.");
-        }
-
-        Requests.Add((courierId, deliveryId));
         return Task.CompletedTask;
     }
 }

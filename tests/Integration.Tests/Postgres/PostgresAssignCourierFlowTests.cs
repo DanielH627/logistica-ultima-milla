@@ -1,7 +1,6 @@
 using LogisticaUltimaMilla.Application.Entregas;
 using LogisticaUltimaMilla.Domain.Entregas;
-using LogisticaUltimaMilla.Infrastructure.Events;
-using LogisticaUltimaMilla.Infrastructure.Notifications;
+using LogisticaUltimaMilla.Infrastructure.Outbox;
 using LogisticaUltimaMilla.Infrastructure.Persistence;
 using LogisticaUltimaMilla.Infrastructure.Routing;
 using LogisticaUltimaMilla.Infrastructure.Time;
@@ -11,13 +10,10 @@ namespace LogisticaUltimaMilla.Integration.Tests.Postgres;
 
 /// <summary>
 /// El flujo completo con persistencia real. El caso de uso y el dominio son los mismos de la Actividad 3:
-/// solo cambian los adaptadores del repositorio y de Ruteo.
+/// solo cambian los adaptadores del repositorio y de Ruteo. Los eventos quedan en la bandeja de salida.
 /// </summary>
 public class PostgresAssignCourierFlowTests : PostgresTestBase
 {
-    private readonly InMemoryDomainEventPublisher _events = new();
-    private readonly InMemoryNotificationRequester _notifier = new();
-
     private AssignCourierUseCase CreateUseCase(out PostgresDeliveryRepository deliveries)
     {
         deliveries = new PostgresDeliveryRepository(DataSource);
@@ -25,14 +21,12 @@ public class PostgresAssignCourierFlowTests : PostgresTestBase
         return new AssignCourierUseCase(
             deliveries,
             new PostgresCourierRoutes(DataSource),
-            _events,
-            _notifier,
             new SystemClock());
     }
 
     // EA01
     [RequiresPostgresFact]
-    public async Task FullFlow_AssignsDeliveryAndPersistsTheStop()
+    public async Task FullFlow_AssignsDeliveryPersistsTheStopAndQueuesTheEvent()
     {
         var useCase = CreateUseCase(out var deliveries);
         var deliveryId = await PostgresTestData.SeedPendingDeliveryAsync(deliveries);
@@ -41,17 +35,21 @@ public class PostgresAssignCourierFlowTests : PostgresTestBase
         var result = await useCase.ExecuteAsync(new AssignCourierCommand(deliveryId.Value, courier.Value, "Sandra"));
 
         Assert.True(result.IsSuccess);
+        Assert.True(result.NoticeQueued);
 
         var stored = await deliveries.GetAsync(deliveryId);
         Assert.Equal(DeliveryStatus.Assigned, stored!.Status);
         Assert.Equal(courier, stored.CourierId);
         Assert.Equal(7, await PostgresTestData.CountStopsAsync(DataSource, courier));
-        Assert.IsType<DeliveryAssigned>(Assert.Single(_events.Published));
+
+        var message = Assert.Single(await PostgresTestData.GetOutboxRowsAsync(DataSource, deliveryId));
+        Assert.Equal(OutboxEventSerializer.DeliveryAssignedV1, message.MessageType);
+        Assert.Equal("Pending", message.Status);
     }
 
     // EA09
     [RequiresPostgresFact]
-    public async Task SaturatedRoute_RejectsAndLeavesTheDeliveryPending()
+    public async Task SaturatedRoute_RejectsAndLeavesTheDeliveryPendingWithoutEvents()
     {
         var useCase = CreateUseCase(out var deliveries);
         var deliveryId = await PostgresTestData.SeedPendingDeliveryAsync(deliveries);
@@ -64,7 +62,7 @@ public class PostgresAssignCourierFlowTests : PostgresTestBase
 
         var stored = await deliveries.GetAsync(deliveryId);
         Assert.Equal(DeliveryStatus.PendingAssignment, stored!.Status);
-        Assert.Empty(_events.Published);
+        Assert.Empty(await PostgresTestData.GetOutboxRowsAsync(DataSource, deliveryId));
     }
 
     // EA08
@@ -84,7 +82,7 @@ public class PostgresAssignCourierFlowTests : PostgresTestBase
 
     // EA11
     [RequiresPostgresFact]
-    public async Task SimultaneousAssignments_OfSameDelivery_OnlyOneWins()
+    public async Task SimultaneousAssignments_OfSameDelivery_OnlyOneWinsAndOnlyOneEventIsQueued()
     {
         var useCase = CreateUseCase(out var deliveries);
         var deliveryId = await PostgresTestData.SeedPendingDeliveryAsync(deliveries);
@@ -107,6 +105,9 @@ public class PostgresAssignCourierFlowTests : PostgresTestBase
         var stops = await PostgresTestData.CountStopsAsync(DataSource, andres)
                     + await PostgresTestData.CountStopsAsync(DataSource, luisa);
         Assert.Equal(7, stops);
+
+        // La operación perdedora no dejó ningún mensaje: su transacción no se confirmó.
+        Assert.Single(await PostgresTestData.GetOutboxRowsAsync(DataSource, deliveryId));
     }
 
     // EA12

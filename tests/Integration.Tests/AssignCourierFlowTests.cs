@@ -2,8 +2,6 @@ using LogisticaUltimaMilla.Application.Entregas;
 using LogisticaUltimaMilla.Domain.Entregas;
 using LogisticaUltimaMilla.Domain.Ruteo;
 using LogisticaUltimaMilla.Domain.Shared;
-using LogisticaUltimaMilla.Infrastructure.Events;
-using LogisticaUltimaMilla.Infrastructure.Notifications;
 using LogisticaUltimaMilla.Infrastructure.Persistence;
 using LogisticaUltimaMilla.Infrastructure.Routing;
 using LogisticaUltimaMilla.Infrastructure.Time;
@@ -19,13 +17,11 @@ public class AssignCourierFlowTests
 {
     private readonly InMemoryDeliveryRepository _deliveries = new();
     private readonly InMemoryCourierRoutes _routes = new();
-    private readonly InMemoryDomainEventPublisher _events = new();
-    private readonly InMemoryNotificationRequester _notifier = new();
     private readonly AssignCourierUseCase _useCase;
 
     public AssignCourierFlowTests()
     {
-        _useCase = new AssignCourierUseCase(_deliveries, _routes, _events, _notifier, new SystemClock());
+        _useCase = new AssignCourierUseCase(_deliveries, _routes, new SystemClock());
     }
 
     private async Task<DeliveryId> SeedPendingDeliveryAsync()
@@ -76,8 +72,7 @@ public class AssignCourierFlowTests
         Assert.Equal(courierId, stored.CourierId);
 
         Assert.Equal(7, _routes.StopCount(courierId));
-        Assert.IsType<DeliveryAssigned>(Assert.Single(_events.Published));
-        Assert.Single(_notifier.Requests);
+        Assert.IsType<DeliveryAssigned>(Assert.Single(_deliveries.SavedEvents));
     }
 
     // EA11
@@ -94,7 +89,7 @@ public class AssignCourierFlowTests
 
         Assert.Equal(1, results.Count(result => result.IsSuccess));
 
-        var failed = Assert.Single(results.Where(result => !result.IsSuccess));
+        var failed = Assert.Single(results, result => !result.IsSuccess);
         Assert.Equal(AssignCourierErrorCodes.DeliveryAlreadyAssigned, failed.ErrorCode);
 
         var stored = await _deliveries.GetAsync(deliveryId);
@@ -102,7 +97,7 @@ public class AssignCourierFlowTests
 
         // Solo una de las dos rutas ganó una parada: la otra fue liberada (compensación).
         Assert.Equal(7, _routes.StopCount(andres) + _routes.StopCount(luisa));
-        Assert.Single(_events.Published);
+        Assert.Single(_deliveries.SavedEvents);
     }
 
     // EA12
@@ -119,7 +114,7 @@ public class AssignCourierFlowTests
 
         Assert.Equal(1, results.Count(result => result.IsSuccess));
 
-        var failed = Assert.Single(results.Where(result => !result.IsSuccess));
+        var failed = Assert.Single(results, result => !result.IsSuccess);
         Assert.Equal(AssignCourierErrorCodes.RouteSaturated, failed.ErrorCode);
 
         Assert.Equal(10, _routes.StopCount(andres));

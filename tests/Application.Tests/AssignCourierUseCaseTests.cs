@@ -15,13 +15,11 @@ public class AssignCourierUseCaseTests
 
     private readonly FakeDeliveryRepository _deliveries = new();
     private readonly FakeCourierRoutes _routes = new();
-    private readonly CapturingEventPublisher _events = new();
-    private readonly CapturingNotifier _notifier = new();
     private readonly AssignCourierUseCase _useCase;
 
     public AssignCourierUseCaseTests()
     {
-        _useCase = new AssignCourierUseCase(_deliveries, _routes, _events, _notifier, new FixedClock(Now));
+        _useCase = new AssignCourierUseCase(_deliveries, _routes, new FixedClock(Now));
     }
 
     private static DeliveryWindow Window() =>
@@ -62,7 +60,7 @@ public class AssignCourierUseCaseTests
 
     // EA01
     [Fact]
-    public async Task Execute_WithAvailableCourier_AssignsAndRequestsNotice()
+    public async Task Execute_WithAvailableCourier_AssignsAndSavesTheEventWithTheDelivery()
     {
         var delivery = AddPendingDelivery();
         var courierId = CourierId.New();
@@ -70,16 +68,25 @@ public class AssignCourierUseCaseTests
         var result = await _useCase.ExecuteAsync(Command(delivery, courierId));
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.NoticeRequested);
+        Assert.True(result.NoticeQueued);
         Assert.Equal(Now, result.AssignedAt);
         Assert.Equal(DeliveryStatus.Assigned, delivery.Status);
         Assert.Equal(courierId, delivery.CourierId);
         Assert.Equal(1, _deliveries.SaveCount);
         Assert.Equal(1, _routes.ReserveCalls);
 
-        var assigned = Assert.IsType<DeliveryAssigned>(Assert.Single(_events.Published));
+        var assigned = Assert.IsType<DeliveryAssigned>(Assert.Single(_deliveries.SavedEvents));
         Assert.Equal("Sandra", assigned.RequestedBy);
-        Assert.Single(_notifier.Requests);
+    }
+
+    [Fact]
+    public async Task Execute_OnSuccess_ClearsTheDomainEventsOnceTheyAreSaved()
+    {
+        var delivery = AddPendingDelivery();
+
+        await _useCase.ExecuteAsync(Command(delivery, CourierId.New()));
+
+        Assert.Empty(delivery.DomainEvents);
     }
 
     // EA06
@@ -93,7 +100,7 @@ public class AssignCourierUseCaseTests
         Assert.False(result.IsSuccess);
         Assert.Equal(AssignCourierErrorCodes.DeliveryNotFound, result.ErrorCode);
         Assert.Equal(0, _deliveries.SaveCount);
-        Assert.Empty(_events.Published);
+        Assert.Empty(_deliveries.SavedEvents);
     }
 
     // EA07
@@ -108,7 +115,7 @@ public class AssignCourierUseCaseTests
         Assert.False(result.IsSuccess);
         Assert.Equal(AssignCourierErrorCodes.AvailabilityUnverifiable, result.ErrorCode);
         Assert.Equal(0, _deliveries.SaveCount);
-        Assert.Empty(_events.Published);
+        Assert.Empty(_deliveries.SavedEvents);
     }
 
     // EA08
@@ -153,7 +160,7 @@ public class AssignCourierUseCaseTests
         Assert.Equal(AssignCourierErrorCodes.DeliveryAlreadyAssigned, result.ErrorCode);
         Assert.Equal(current, delivery.CourierId);
         Assert.Equal(0, _routes.ReserveCalls);
-        Assert.Empty(_events.Published);
+        Assert.Empty(_deliveries.SavedEvents);
     }
 
     // EA04
@@ -176,20 +183,6 @@ public class AssignCourierUseCaseTests
     }
 
     [Fact]
-    public async Task Execute_WhenNoticeFails_AssignmentStands()
-    {
-        var delivery = AddPendingDelivery();
-        _notifier.ShouldFail = true;
-
-        var result = await _useCase.ExecuteAsync(Command(delivery, CourierId.New()));
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.NoticeRequested);
-        Assert.Equal(DeliveryStatus.Assigned, delivery.Status);
-        Assert.Equal(1, _deliveries.SaveCount);
-    }
-
-    [Fact]
     public async Task Execute_WhenReservationFails_DoesNotSave()
     {
         var delivery = AddPendingDelivery();
@@ -201,11 +194,11 @@ public class AssignCourierUseCaseTests
         Assert.Equal(AssignCourierErrorCodes.RouteSaturated, result.ErrorCode);
         Assert.Equal(0, _deliveries.SaveCount);
         Assert.Equal(0, _routes.ReleaseCalls);
-        Assert.Empty(_events.Published);
+        Assert.Empty(_deliveries.SavedEvents);
     }
 
     [Fact]
-    public async Task Execute_WhenSaveConflicts_ReleasesStop()
+    public async Task Execute_WhenSaveConflicts_ReleasesStopAndSavesNoEvent()
     {
         var delivery = AddPendingDelivery();
         _deliveries.ThrowConcurrencyOnSave = true;
@@ -216,6 +209,6 @@ public class AssignCourierUseCaseTests
         Assert.Equal(AssignCourierErrorCodes.DeliveryAlreadyAssigned, result.ErrorCode);
         Assert.Equal(1, _routes.ReserveCalls);
         Assert.Equal(1, _routes.ReleaseCalls);
-        Assert.Empty(_events.Published);
+        Assert.Empty(_deliveries.SavedEvents);
     }
 }

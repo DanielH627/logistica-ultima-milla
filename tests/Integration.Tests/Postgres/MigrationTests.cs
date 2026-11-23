@@ -30,6 +30,8 @@ public class MigrationTests : PostgresTestBase
         Assert.True(await TableExistsAsync("entregas.entrega"));
         Assert.True(await TableExistsAsync("ruteo.ruta"));
         Assert.True(await TableExistsAsync("ruteo.parada"));
+        Assert.True(await TableExistsAsync("transversal.bandeja_salida"));
+        Assert.True(await TableExistsAsync("transversal.historial_eventos"));
     }
 
     [RequiresPostgresFact]

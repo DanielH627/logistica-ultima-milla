@@ -1,9 +1,12 @@
+using LogisticaUltimaMilla.Application.Ports;
 using LogisticaUltimaMilla.Domain.Entregas;
 using LogisticaUltimaMilla.Domain.Shared;
-using LogisticaUltimaMilla.Application.Ports;
 using Npgsql;
 
 namespace LogisticaUltimaMilla.Integration.Tests.Postgres;
+
+/// <summary>Un mensaje de la bandeja de salida, tal como quedó guardado.</summary>
+internal sealed record OutboxRow(string MessageType, string Status, int Attempts, string Payload);
 
 /// <summary>Datos de prueba: crean repartidores, rutas y entregas directamente en la base.</summary>
 internal static class PostgresTestData
@@ -89,6 +92,31 @@ internal static class PostgresTestData
         command.Parameters.AddWithValue("courier_id", courierId.Value);
 
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    /// <summary>Mensajes de la bandeja de salida que pertenecen a una entrega.</summary>
+    public static async Task<IReadOnlyList<OutboxRow>> GetOutboxRowsAsync(NpgsqlDataSource dataSource, DeliveryId deliveryId)
+    {
+        var rows = new List<OutboxRow>();
+
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT message_type, status, attempts, payload::text
+            FROM transversal.bandeja_salida
+            WHERE aggregate_id = @aggregate_id
+            ORDER BY occurred_at
+            """,
+            connection);
+        command.Parameters.AddWithValue("aggregate_id", deliveryId.Value);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new OutboxRow(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetString(3)));
+        }
+
+        return rows;
     }
 
     public static Delivery NewPendingDelivery(DeliveryPriority priority = DeliveryPriority.Normal) =>
