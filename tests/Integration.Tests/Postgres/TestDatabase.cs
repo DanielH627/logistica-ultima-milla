@@ -14,14 +14,18 @@ public sealed class TestDatabase : IAsyncDisposable
 
     private readonly string _adminConnectionString;
 
-    private TestDatabase(string adminConnectionString, string name, NpgsqlDataSource dataSource)
+    private TestDatabase(string adminConnectionString, string name, string connectionString, NpgsqlDataSource dataSource)
     {
         _adminConnectionString = adminConnectionString;
         Name = name;
+        ConnectionString = connectionString;
         DataSource = dataSource;
     }
 
     public string Name { get; }
+
+    /// <summary>Cadena de conexión completa de la base temporal (incluye la contraseña; solo para pruebas).</summary>
+    public string ConnectionString { get; }
 
     public NpgsqlDataSource DataSource { get; }
 
@@ -51,7 +55,7 @@ public sealed class TestDatabase : IAsyncDisposable
             await new MigrationRunner(dataSource).MigrateAsync();
         }
 
-        return new TestDatabase(admin, name, dataSource);
+        return new TestDatabase(admin, name, builder.ConnectionString, dataSource);
     }
 
     public async ValueTask DisposeAsync()

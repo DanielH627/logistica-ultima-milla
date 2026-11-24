@@ -13,6 +13,9 @@ public abstract class PostgresTestBase : IAsyncLifetime
     protected NpgsqlDataSource DataSource =>
         _database?.DataSource ?? throw new InvalidOperationException("La base de datos de prueba no está disponible.");
 
+    protected string ConnectionString =>
+        _database?.ConnectionString ?? throw new InvalidOperationException("La base de datos de prueba no está disponible.");
+
     public async Task InitializeAsync()
     {
         if (TestDatabase.ConnectionStringFromEnvironment() is null)
