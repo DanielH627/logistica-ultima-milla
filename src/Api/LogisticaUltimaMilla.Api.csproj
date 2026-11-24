@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    La entrada del sistema. Es la capa más externa: conoce a la aplicación y a la infraestructura
+    (para componerlas), pero sus endpoints solo hablan con los contratos de la aplicación.
+  -->
+  <PropertyGroup>
+    <RootNamespace>LogisticaUltimaMilla.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Application\LogisticaUltimaMilla.Application.csproj" />
+    <ProjectReference Include="..\Infrastructure\LogisticaUltimaMilla.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
