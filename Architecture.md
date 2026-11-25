@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |-------|-------|
-| **Estado** | Vigente tras la Actividad 3 |
+| **Estado** | Vigente tras la Actividad 4 |
 | **Última actualización** | Noviembre de 2026 |
 | **Autor** | [Tu nombre completo] |
 | **Alcance** | Plataforma de gestión logística de última milla para una empresa de retail digital |
@@ -13,7 +13,7 @@ Este documento describe la arquitectura de la plataforma: qué problema resuelve
 
 No reemplaza a los documentos de cada actividad, sino que los resume y los conecta. Cuando una explicación se desarrolla con más detalle en otro lugar, se indica el enlace.
 
-> Este documento describe lo **diseñado y decidido**. La persistencia, la interfaz y las integraciones reales corresponden a la Actividad 4 y se señalan como pendientes.
+> Este documento describe lo **diseñado, decidido e implementado**. El flujo "asignar un repartidor a una entrega" funciona de punta a punta como un vertical slice ejecutable (Actividad 4). Lo que se simula (el sistema de notificaciones) y lo que sigue abierto se señala de forma explícita.
 
 ## 2. Contexto y problema
 
@@ -32,8 +32,13 @@ La empresa recibe pedidos por varios canales, maneja inventarios distribuidos y 
 | **Convivencia con el ERP/CRM** | La plataforma se integra con el sistema existente y no lo reemplaza | `docs/actividad-1/06-supuestos-y-decisiones.md` (D06) |
 | **Tres capas con dependencias hacia adentro** | Dominio, aplicación e infraestructura, con puertos y adaptadores | `docs/actividad-3/adr/ADR-003-capas-y-dependencias.md` |
 | **Coordinación entre Entregas y Ruteo** | Reserva previa del cupo con liberación compensatoria | `docs/actividad-3/adr/ADR-004-coordinacion-entre-entregas-y-ruteo.md` |
-| **Rechazos de negocio como resultados** | Códigos estables en lugar de excepciones; evento registrado tras guardar; aviso que no revierte la asignación | `docs/actividad-3/adr/ADR-005-rechazos-eventos-y-avisos.md` |
-| **C# sobre .NET 10 para el esqueleto de diseño** | Solo el lenguaje y la plataforma; no se eligen aún bases de datos ni proveedores | `docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md` |
+| **Rechazos de negocio como resultados** | Códigos estables en lugar de excepciones; aviso que no revierte la asignación (la regla del evento fue reemplazada por el ADR-007) | `docs/actividad-3/adr/ADR-005-rechazos-eventos-y-avisos.md` |
+| **C# sobre .NET 10 para el esqueleto de diseño** | Solo el lenguaje y la plataforma; la base de datos se eligió después, en la Actividad 4 | `docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md` |
+| **PostgreSQL, SQL parametrizado y migraciones versionadas** | Un esquema por módulo; concurrencia con versión optimista y bloqueo de fila | `docs/actividad-4/adr/ADR-006-persistencia-postgresql-y-migraciones.md` |
+| **Bandeja de salida con reintentos y mensajes muertos** | El evento se guarda con la entrega; un procesador lo entrega. Ajusta el ADR-005 | `docs/actividad-4/adr/ADR-007-bandeja-de-salida-reintentos-y-mensajes-muertos.md` |
+| **Entrada HTTP con clave de API** | Un endpoint versionado; rechazos traducidos a códigos HTTP estables | `docs/actividad-4/adr/ADR-008-entrada-http-y-clave-de-api.md` |
+| **Observabilidad sin datos sensibles** | Registros JSON con correlación, métricas y salud | `docs/actividad-4/adr/ADR-009-observabilidad-sin-datos-sensibles.md` |
+| **Verificaciones automáticas** | Pruebas de arquitectura e integración continua | `docs/actividad-4/adr/ADR-010-verificaciones-automaticas.md` |
 | **Fuente de la verdad del inventario** | Decisión aplazada hasta contar con información del negocio | Pendiente |
 
 ![Alternativas estructurales comparadas](docs/actividad-2/diagramas/alternativas.png)
@@ -59,15 +64,15 @@ La plataforma se relaciona con cinco tipos de persona y cinco sistemas externos.
 
 ## 5. Vista de contenedores (C4, nivel 2)
 
-![C4 nivel 2: contenedores](docs/actividad-3/diagramas/c4-2-contenedores.png)
+![C4 nivel 2: contenedores implementados](docs/actividad-4/diagramas/c4-2-contenedores-implementado.png)
 
 | Contenedor | Responsabilidad | Estado |
 |------------|-----------------|--------|
-| **Aplicación modular** | Contiene toda la lógica del negocio, organizada en los módulos Pedidos, Inventario, Ruteo, Entregas e Incidencias | Esqueleto diseñado y probado |
-| **Interfaz y API** | Recibe las solicitudes de las personas y las traduce a casos de uso | Por definir en la Actividad 4 |
-| **Almacenamiento de datos** | Guarda los datos de cada módulo, separados entre sí | Por definir en la Actividad 4 |
+| **Aplicación modular** (ASP.NET Core, .NET 10) | API HTTP, casos de uso, dominio, adaptadores y el procesador de la bandeja de salida, que corre en segundo plano dentro del mismo proceso | Implementada y probada |
+| **Base de datos** (PostgreSQL 17) | Datos de cada módulo en esquemas separados (`entregas`, `ruteo`, `transversal`) | Implementada, con migraciones versionadas |
+| **Sistema de notificaciones** (externo) | Entrega los avisos que la plataforma solicita | **Simulado** por un adaptador con falla configurable |
 
-Por tratarse de un monolito modular, todos los módulos se despliegan juntos. La separación entre ellos es **lógica**, no física: se logra con límites de contexto, interfaces y reglas de dependencia, y deja abierto extraer **Ruteo** como servicio independiente si las condiciones de revisión del ADR-001 lo justifican.
+Por tratarse de un monolito modular, todos los módulos se despliegan juntos. La separación entre ellos es **lógica**, no física: se logra con límites de contexto, interfaces, esquemas separados y reglas de dependencia verificadas por pruebas, y deja abierto extraer **Ruteo** como servicio independiente si las condiciones de revisión del ADR-001 lo justifican. Los esquemas separados y la comunicación por puertos y mensajes versionados son lo que haría esa extracción posible.
 
 ## 6. Módulos y límites de contexto
 
@@ -100,23 +105,34 @@ Cada contexto tiene su propio modelo y su propio lenguaje. Una misma palabra, co
 | **Domain** | Entidades, objetos de valor, invariantes, eventos y errores de dominio | Nada |
 | **Application** | Casos de uso, contratos de entrada y salida, y puertos | Domain |
 | **Infrastructure** | Adaptadores que implementan los puertos | Application |
+| **Api** (entrada) | Endpoints, seguridad, observabilidad y raíz de composición | Application e Infrastructure (solo para componerlas) |
 
-La aplicación define lo que necesita (el puerto) y la infraestructura lo implementa (el adaptador). Esta regla está reforzada por la estructura de proyectos: el dominio no referencia a ningún otro proyecto, la aplicación referencia solo al dominio y la infraestructura referencia solo a la aplicación. Una dependencia en sentido contrario no compilaría.
+La aplicación define lo que necesita (el puerto) y la infraestructura lo implementa (el adaptador). Esta regla está reforzada por la estructura de proyectos: el dominio no referencia a ningún otro proyecto, la aplicación referencia solo al dominio y la infraestructura referencia solo a la aplicación. Una dependencia en sentido contrario no compilaría. Además, desde la Actividad 4 estas reglas **se verifican con pruebas automáticas** (ADR-010): el dominio solo usa la biblioteca base, la aplicación solo depende del dominio, la infraestructura no conoce a la API y la API no usa tipos del dominio.
 
 ## 8. Vista de componentes (C4, nivel 3)
 
-![C4 nivel 3: componentes](docs/actividad-3/diagramas/c4-3-componentes.png)
+![C4 nivel 3: componentes implementados](docs/actividad-4/diagramas/c4-3-componentes-implementado.png)
 
-La vista muestra el flujo diseñado en la Actividad 3: **asignar un repartidor a una entrega**.
+La vista muestra el flujo implementado: **asignar un repartidor a una entrega**.
 
-1. El caso de uso `AssignCourierUseCase` recibe el comando y carga la entrega mediante el puerto del repositorio.
-2. Consulta la disponibilidad del repartidor mediante el puerto de Ruteo.
-3. Invoca `Delivery.AssignCourier`, donde el dominio protege sus invariantes.
-4. Reserva el cupo en la ruta; `Route` protege la capacidad.
-5. Guarda la entrega y, si hay un conflicto, libera el cupo.
-6. Registra el evento `DeliveryAssigned` y solicita el aviso al repartidor.
+**Dentro de la solicitud HTTP**
 
-El detalle del flujo, los contratos y los puertos está en `docs/actividad-3/06-casos-de-uso-puertos-adaptadores.md`.
+1. Los *middlewares* asignan el identificador de correlación, agregan los encabezados de seguridad y registran la solicitud. El filtro de clave de API rechaza lo que no esté autenticado.
+2. El *endpoint* valida la forma de los datos y los traduce al comando del caso de uso.
+3. `AssignCourierUseCase` carga la entrega por el puerto del repositorio y consulta la disponibilidad del repartidor en Ruteo.
+4. `Delivery.AssignCourier` aplica las invariantes en el dominio.
+5. `PostgresCourierRoutes` reserva el cupo con un bloqueo de fila; `Route` protege la capacidad.
+6. `PostgresDeliveryRepository` guarda la entrega con control de versión y, **en la misma transacción**, el mensaje `DeliveryAssigned.v1` en la bandeja de salida. Si hay conflicto, el caso de uso libera el cupo.
+7. El *endpoint* traduce el resultado a una respuesta HTTP con código estable.
+
+**Fuera de la solicitud, en segundo plano**
+
+8. `OutboxProcessor` reclama mensajes vencidos (`FOR UPDATE SKIP LOCKED`) y los entrega a sus manejadores: `EventHistoryHandler` (idempotente) y `DeliveryAssignedNotificationHandler`, que solicita el aviso por el puerto `INotificationRequester`.
+9. Si un manejador falla, el mensaje se reintenta con espera creciente; agotados los intentos pasa a `Dead` para revisión manual. La asignación nunca se deshace.
+
+![Estados de un mensaje de la bandeja de salida](docs/actividad-4/diagramas/estados-del-mensaje.png)
+
+El detalle del flujo, los contratos y los puertos está en `docs/actividad-3/06-casos-de-uso-puertos-adaptadores.md`; los ajustes de la implementación están en `docs/actividad-4/01-plan-de-implementacion.md` (AJ-01 a AJ-06) y en el ADR-007. El diseño original de la Actividad 3 se conserva en `docs/actividad-3/diagramas/`.
 
 ## 9. Modelo de dominio
 
@@ -158,68 +174,123 @@ La entrega pasa por seis estados (pendiente de asignación, asignada, en camino,
 
 Los contratos están versionados y describen lo que viaja, no cómo. Su definición completa está en `docs/actividad-3/05-contextos-y-contratos.md`.
 
-## 11. Cualidades y cómo se verifican
+## 11. Persistencia y migraciones
+
+| Tabla | Módulo | Contenido |
+|-------|--------|-----------|
+| `entregas.entrega` | Entregas | Entregas con estado, repartidor asignado y número de versión |
+| `ruteo.repartidor`, `ruteo.ruta`, `ruteo.parada` | Ruteo | Repartidores, rutas con su capacidad y paradas reservadas |
+| `transversal.bandeja_salida` | Transversal | Mensajes pendientes, enviados o muertos, con intentos y último error |
+| `transversal.historial_eventos` | Transversal | Historial de eventos de cada entrega |
+
+- **Concurrencia:** control optimista por versión en la entrega y bloqueo de la fila de la ruta al reservar un cupo.
+- **Migraciones:** scripts SQL versionados, cada uno aplicado una sola vez, con suma de verificación SHA-256 y bloqueo consultivo. Un script ya aplicado que cambie hace fallar la ejecución. Ver ADR-006.
+- **Datos de demostración:** se cargan solo en desarrollo.
+
+## 12. Mensajería asíncrona y fallos
+
+La bandeja de salida (ADR-007) garantiza que ningún evento se pierda ni se registre por una operación fallida. La entrega es "al menos una vez" con manejadores idempotentes.
+
+| Situación | Reacción |
+|-----------|----------|
+| Rechazo de negocio (entrega inexistente, ya asignada, ruta saturada, repartidor inactivo) | Resultado con código estable; HTTP 404, 409 o 422 |
+| Datos mal formados o sin clave de API | HTTP 400 o 401 |
+| Dos asignaciones simultáneas | Una prevalece; la otra recibe un rechazo y se libera su cupo |
+| Ruteo no responde | No se asigna a ciegas; HTTP 503 |
+| El sistema de avisos falla | Reintentos con espera creciente; luego `Dead`; la asignación se mantiene |
+| Falla inesperada | HTTP 500 con identificador de traza y sin detalles internos |
+
+## 13. Entrada, seguridad y observabilidad
+
+- **Entrada:** `POST /api/v1/deliveries/{deliveryId}/assignment` con clave de API en `X-Api-Key` y solicitante en `X-Requested-By` (ADR-008).
+- **Seguridad:** clave comparada en tiempo constante; encabezados de seguridad; SQL solo con parámetros; mensajes y registros sin datos personales.
+- **Observabilidad** (ADR-009): registros JSON con identificador de correlación; métricas de solicitudes, asignaciones y bandeja de salida; `/health/live` y `/health/ready`; consulta operativa protegida de la bandeja.
+- **Verificaciones automáticas** (ADR-010): pruebas de arquitectura y de seguridad, e integración continua que compila con advertencias como errores, audita dependencias y ejecuta todas las pruebas contra PostgreSQL.
+
+## 14. Cualidades y cómo se verifican
 
 | Cualidad | Cómo se logra en esta arquitectura | Escenario |
 |----------|------------------------------------|-----------|
 | **Consistencia de datos** | La reserva y el estado se coordinan en una sola operación; el control de versión evita dobles escrituras | QS01 |
 | **Trazabilidad** | Cada asignación genera un evento con quién, qué y cuándo | QS04 |
 | **Evolución** | Un cambio de regla de ruteo toca un solo módulo | QS13 |
-| **Resiliencia ante terceros** | Si falla un tercero, la operación continúa; el aviso fallido no revierte la asignación | QS09 |
+| **Resiliencia ante terceros** | Si falla un tercero, la operación continúa; el aviso se reintenta y la asignación no se revierte | QS09 |
 | **Operabilidad** | Una sola unidad desplegable para un equipo pequeño | QS14 |
-| **Facilidad de prueba** | Las reglas del negocio se prueban sin base de datos ni servicios externos | Pruebas del proyecto |
+| **Facilidad de prueba** | Las reglas del negocio se prueban sin base de datos ni servicios externos; el flujo completo se prueba contra PostgreSQL real | 122 pruebas |
+| **Observabilidad** | Registros con correlación, métricas y salud, sin datos sensibles | ADR-009 |
+| **Seguridad** | Clave de API, SQL parametrizado, reglas automáticas | ADR-008 y ADR-010 |
 
 Los criterios para comprobar que la decisión sigue siendo válida están en `docs/actividad-2/05-criterios-verificables.md`.
 
-## 12. Riesgos y puntos abiertos
+## 15. Riesgos y puntos abiertos
 
 | Punto | Estado |
 |-------|--------|
 | **Fuente de la verdad del inventario** entre la plataforma y el ERP/CRM | Abierto, aplazado hasta contar con información del negocio |
-| **Persistencia real** y su control de concurrencia | Actividad 4 |
-| **Garantía de que el evento no se pierda** si falla su registro tras guardar la entrega | Actividad 4 |
-| **Acoplamiento circular** entre Entregas y Ruteo | Controlado con un paquete de contratos por contexto |
-| **Degradación del monolito modular** en una base de código acoplada | Controlada con las reglas de dependencia y las revisiones de CE02 |
+| **Garantía de que el evento no se pierda** | Resuelto con la bandeja de salida (ADR-007) |
+| **Persistencia real y su control de concurrencia** | Resuelto y probado (ADR-006) |
+| **Acoplamiento circular** entre Entregas y Ruteo | Controlado con puertos y una regla de arquitectura automática |
+| **Degradación del monolito modular** | Controlada con reglas de dependencia verificadas en cada cambio |
+| **Cupo huérfano** si el proceso muere entre reservar y guardar | Abierto: la caducidad de reservas (AJ-06) no se implementó |
+| **Mensajes `Dead`** sin reprocesamiento ni alertas | Abierto: se detectan, no se reprocesan |
+| **Identidad débil** (clave de API compartida) | Abierto: autenticación por usuario como próximo paso |
+| **Sin límite de solicitudes, copias de seguridad ni alta disponibilidad** | Abierto: pertenece al despliegue |
 | **Ruteo bajo carga** | Se vigila con las condiciones de revisión del ADR-001 |
 
-El registro completo de riesgos está en `docs/actividad-1/05-riesgos.md`.
+El registro completo de riesgos de la implementación, con su mitigación y evidencia, está en `docs/actividad-4/05-riesgos-resultados-y-proximos-pasos.md`; el diagnóstico original está en `docs/actividad-1/05-riesgos.md`.
 
-## 13. Estructura del repositorio
+## 16. Estructura del repositorio
 
 ```
 logistica-ultima-milla/
 ├── README.md
 ├── Architecture.md
 ├── Directory.Build.props
+├── docker-compose.yml
+├── .github/
+│   ├── workflows/ci.yml
+│   └── dependabot.yml
 ├── docs/
 │   ├── actividad-1/   Diagnóstico y contexto
-│   ├── actividad-2/   Requisitos y decisión estructural (incluye el ADR-001)
-│   └── actividad-3/   Dominio y diseño (incluye los ADR-002 a ADR-005)
+│   ├── actividad-2/   Requisitos y decisión estructural (ADR-001)
+│   ├── actividad-3/   Dominio y diseño (ADR-002 a ADR-005)
+│   └── actividad-4/   Implementación y validación (ADR-006 a ADR-010)
 ├── src/
 │   ├── Domain/
 │   ├── Application/
-│   └── Infrastructure/
+│   ├── Infrastructure/
+│   └── Api/
 └── tests/
     ├── Domain.Tests/
     ├── Application.Tests/
-    └── Integration.Tests/
+    └── Integration.Tests/   (incluye Architecture/)
 ```
 
-## 14. Cómo construir y probar
+## 17. Cómo construir, probar y ejecutar
 
-Requisito: SDK de .NET 10. Desde la raíz del repositorio:
+Requisitos: SDK de .NET 10 y Docker. Desde la raíz del repositorio:
 
 ```bash
+docker compose up -d
 dotnet build
 dotnet test
 ```
 
-Las pruebas del dominio y de la aplicación no necesitan base de datos ni servicios externos. Las de integración usan adaptadores en memoria.
+Para que las pruebas con PostgreSQL se ejecuten, defina la variable de entorno `LOGISTICA_TEST_POSTGRES` con la cadena de conexión del servidor (usuario, contraseña y puerto de su contenedor). Sin ella, esas pruebas se omiten con un aviso. Las pruebas del dominio, de la aplicación y de arquitectura no necesitan base de datos, salvo las que recorren los endpoints, que usan una base inalcanzable a propósito.
 
-## 15. Índice de documentación
+Para ejecutar la API en desarrollo (migra y carga datos de demostración al iniciar):
+
+```bash
+dotnet run --project src/Api
+```
+
+La integración continua ejecuta lo mismo en cada cambio (`.github/workflows/ci.yml`).
+
+## 18. Índice de documentación
 
 | Actividad | Documentos |
 |-----------|------------|
 | **1. Diagnóstico y contexto** | Análisis del problema, actores, alcance, diagrama de contexto, riesgos, supuestos y decisiones |
 | **2. Requisitos y decisión estructural** | Catálogo de requisitos, matriz de priorización, escenarios de calidad, comparación de alternativas, criterios verificables y ADR-001 |
 | **3. Dominio y diseño** | Flujo de negocio, lenguaje ubicuo, modelo de dominio, invariantes y escenarios, contextos y contratos, casos de uso, puertos y adaptadores, y los ADR-002 a ADR-005 |
+| **4. Implementación y validación** | Plan de implementación, bandeja de salida y reintentos, observabilidad y seguridad, verificaciones automáticas, riesgos con evidencia y los ADR-006 a ADR-010 |

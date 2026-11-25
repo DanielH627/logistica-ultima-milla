@@ -1,9 +1,11 @@
 # Plataforma de gestión logística de última milla
 
-Proyecto de arquitectura de software sobre una plataforma de logística de última milla para una empresa de retail digital. El trabajo avanza por actividades: primero se **comprende el problema**, luego se **decide la estructura** de la solución y, por último, se **diseña su dominio** con un esqueleto de código verificable.
+Proyecto de arquitectura de software sobre una plataforma de logística de última milla para una empresa de retail digital. El trabajo avanza por actividades: primero se **comprende el problema**, luego se **decide la estructura** de la solución, se **diseña su dominio** y, por último, se **construye y valida** un flujo completo de punta a punta.
 
-- **Autor:** [Tu nombre completo]
-- **Curso / institución:** [Nombre del curso e institución]
+![CI](https://github.com/DanielH627/logistica-ultima-milla/actions/workflows/ci.yml/badge.svg)
+
+- **Autor:** [Daniel Henao Carvajal]
+- **Curso / institución:** [ITM]
 - **Arquitectura completa:** [`Architecture.md`](Architecture.md)
 
 | Actividad | Qué resuelve | Documentos | Video |
@@ -11,8 +13,9 @@ Proyecto de arquitectura de software sobre una plataforma de logística de últi
 | **1. Diagnóstico y contexto arquitectónico** | Entender el problema, los actores, el alcance y los riesgos | [`docs/actividad-1`](docs/actividad-1) | [Pendiente de publicar] |
 | **2. Requisitos y decisión estructural** | Traducir el diagnóstico en requisitos y decidir cómo se organiza la plataforma | [`docs/actividad-2`](docs/actividad-2) | [Pendiente de publicar] |
 | **3. Dominio y diseño** | Diseñar el modelo de dominio, sus reglas, sus límites y la separación entre negocio e infraestructura | [`docs/actividad-3`](docs/actividad-3), [`src`](src) y [`tests`](tests) | [Pendiente de publicar] |
+| **4. Construcción, validación y defensa final** | Implementar el flujo de asignación de punta a punta, probarlo, hacerlo observable y evaluar sus riesgos | [`docs/actividad-4`](docs/actividad-4), [`src`](src) y [`tests`](tests) | [Pendiente de publicar] |
 
-> Hasta la Actividad 2 no se elige ninguna tecnología. En la Actividad 3 se elige **únicamente** el lenguaje y la plataforma del esqueleto de diseño (C# sobre .NET 10, ver [ADR-002](docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md)); las bases de datos, los frameworks y los proveedores se deciden en la Actividad 4.
+> Hasta la Actividad 2 no se elige ninguna tecnología. En la Actividad 3 se elige **únicamente** el lenguaje y la plataforma del esqueleto de diseño (C# sobre .NET 10, ver [ADR-002](docs/actividad-3/adr/ADR-002-lenguaje-y-plataforma-del-esqueleto.md)). En la Actividad 4 se deciden la base de datos, el framework de la entrada y el resto de la implementación (ADR-006 a ADR-010).
 
 ---
 
@@ -233,9 +236,108 @@ dotnet test
 
 Las pruebas del dominio y de la aplicación no usan base de datos ni servicios externos. Las de integración usan adaptadores en memoria y comprueban la concurrencia. En total son 38 pruebas: 22 del dominio, 13 de la aplicación y 3 de integración.
 
-### Qué queda para la Actividad 4
+### Qué quedaba para la Actividad 4
 
-Persistencia real, interfaz o API, integraciones con los sistemas externos y la garantía de que el evento no se pierda si falla su registro. La decisión sobre la fuente de la verdad del inventario sigue abierta.
+Persistencia real, interfaz o API, integraciones con los sistemas externos y la garantía de que el evento no se pierda si falla su registro. Todo esto se resolvió en la Actividad 4, salvo la integración real con el sistema de notificaciones, que se simula. La decisión sobre la fuente de la verdad del inventario sigue abierta.
+
+---
+
+## Actividad 4: Construcción, validación y defensa final
+
+### Qué se construyó
+
+El flujo **asignar un repartidor a una entrega** funciona de punta a punta como un *vertical slice* ejecutable: API HTTP, caso de uso, dominio, PostgreSQL y bandeja de salida con procesamiento asíncrono.
+
+![C4 nivel 2: contenedores implementados](docs/actividad-4/diagramas/c4-2-contenedores-implementado.png)
+
+![C4 nivel 3: componentes implementados](docs/actividad-4/diagramas/c4-3-componentes-implementado.png)
+
+| Pieza | Qué hace |
+|-------|----------|
+| **Entrada HTTP** | `POST /api/v1/deliveries/{deliveryId}/assignment`, con clave de API y códigos de respuesta estables |
+| **Persistencia** | PostgreSQL 17, esquemas separados por módulo, SQL parametrizado y migraciones versionadas con suma de verificación |
+| **Concurrencia** | Versión optimista en la entrega y bloqueo de fila al reservar el cupo de la ruta |
+| **Bandeja de salida** | El evento se guarda con la entrega; un procesador lo entrega con reintentos de espera creciente y estado `Dead` si se agotan |
+| **Observabilidad** | Registros JSON con identificador de correlación, métricas, `/health/live` y `/health/ready`, sin datos sensibles |
+| **Verificaciones automáticas** | 18 pruebas de arquitectura y seguridad, e integración continua con auditoría de dependencias |
+
+El dominio **no cambió** para conectar la persistencia: esa es la prueba de que la separación de capas del diseño era correcta.
+
+### Ajustes al diseño de la Actividad 3
+
+| Ajuste | Qué cambió | Por qué |
+|--------|-----------|---------|
+| AJ-01 a AJ-03 | El evento se guarda en la **bandeja de salida**, en la misma transacción que la entrega; el caso de uso ya no publica ni avisa directamente | Elimina el evento perdido que el ADR-005 dejó abierto |
+| AJ-04 | Ruteo vive en la misma base, en un esquema propio | Respeta la separación de datos por módulo sin multiplicar almacenes |
+| AJ-05 | Datos de demostración en desarrollo | La creación de entregas desde pedidos queda fuera del slice |
+| AJ-06 | Reservas con vencimiento: **aplazado** | Queda como riesgo residual (RI08) |
+
+### Demostración rápida
+
+Con Docker y .NET 10 instalados, desde la raíz del repositorio:
+
+```bash
+docker compose up -d
+dotnet run --project src/Api
+```
+
+En otra terminal (Windows, con `curl.exe`), asignar a Luisa la primera entrega de demostración:
+
+```bash
+curl.exe -i -X POST "http://localhost:5080/api/v1/deliveries/d0000000-0000-0000-0000-000000000001/assignment" -H "X-Api-Key: clave-de-desarrollo" -H "X-Requested-By: sandra" -H "Content-Type: application/json" -d "{\"courierId\":\"a0000000-0000-0000-0000-000000000002\"}"
+```
+
+| Escenario | Entrega → repartidor | Resultado |
+|-----------|----------------------|-----------|
+| Asignación válida | `…0001` → Luisa (`a…0002`) | 200 |
+| Repetir la misma entrega | `…0001` → Luisa | 409 `DELIVERY_ALREADY_ASSIGNED` |
+| Ruta saturada | `…0002` → Camilo (`a…0004`) | 409 `ROUTE_SATURATED` |
+| Repartidor inactivo | `…0003` → Paola (`a…0003`) | 422 `COURIER_NOT_ACTIVE` |
+| Sin clave de API | cualquiera | 401 |
+
+La clave de desarrollo es solo para uso local. Para ver el estado de la bandeja de salida y la salud: `http://localhost:5080/health/ready` y, con la clave, `/api/v1/operations/outbox`.
+
+### Resultados
+
+**122 pruebas correctas** (ejecución local del 24 de noviembre de 2026): unitarias de las invariantes, de integración contra PostgreSQL real (concurrencia, ruta saturada, base caída, aviso que siempre falla), de observabilidad y de arquitectura. La integración continua repite todo en cada cambio.
+
+No se midió cobertura, rendimiento ni capacidad, y no se ejecutó análisis estático (SAST), dinámico (DAST) ni pruebas de penetración.
+
+### Decisiones de implementación
+
+| ADR | Decisión |
+|-----|----------|
+| [ADR-006](docs/actividad-4/adr/ADR-006-persistencia-postgresql-y-migraciones.md) | PostgreSQL, SQL parametrizado sin ORM y migraciones versionadas |
+| [ADR-007](docs/actividad-4/adr/ADR-007-bandeja-de-salida-reintentos-y-mensajes-muertos.md) | Bandeja de salida transaccional con reintentos y mensajes muertos (ajusta el ADR-005) |
+| [ADR-008](docs/actividad-4/adr/ADR-008-entrada-http-y-clave-de-api.md) | Entrada HTTP con clave de API y traducción de rechazos |
+| [ADR-009](docs/actividad-4/adr/ADR-009-observabilidad-sin-datos-sensibles.md) | Registros, métricas y salud sin datos sensibles |
+| [ADR-010](docs/actividad-4/adr/ADR-010-verificaciones-automaticas.md) | Pruebas de arquitectura e integración continua |
+
+### Riesgos residuales principales
+
+- **Cupo huérfano:** si el proceso muere entre reservar y guardar, el cupo queda ocupado (caducidad de reservas sin implementar).
+- **Mensajes `Dead`:** se detectan por la salud degradada, pero no se reprocesan ni generan alertas.
+- **Identidad débil:** la clave de API es un secreto compartido; no identifica a cada persona.
+- **Sin límite de solicitudes, copias de seguridad ni alta disponibilidad.**
+- **El sistema de notificaciones es simulado** y la fuente de la verdad del inventario sigue sin decidirse.
+
+El registro completo, con la mitigación y la evidencia de cada riesgo, está en [Riesgos, resultados y próximos pasos](docs/actividad-4/05-riesgos-resultados-y-proximos-pasos.md).
+
+### Cómo construir y probar
+
+Requisitos: SDK de .NET 10 y Docker.
+
+```bash
+docker compose up -d
+dotnet build
+dotnet test
+```
+
+Defina la variable de entorno `LOGISTICA_TEST_POSTGRES` con la cadena de conexión a su servidor PostgreSQL para que se ejecuten las pruebas de integración con base de datos; sin ella se omiten con un aviso. Ejemplo en Windows (cmd):
+
+```bash
+set LOGISTICA_TEST_POSTGRES=Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres
+```
 
 ---
 
@@ -280,6 +382,19 @@ Persistencia real, interfaz o API, integraciones con los sistemas externos y la 
 
 ---
 
+### Actividad 4
+
+| # | Documento | Qué responde |
+|---|-----------|--------------|
+| 1 | [Plan de implementación](docs/actividad-4/01-plan-de-implementacion.md) | ¿Qué se construye, con qué decisiones y cómo se traza con el diseño? |
+| 2 | [Bandeja de salida y reintentos](docs/actividad-4/02-bandeja-de-salida-y-reintentos.md) | ¿Cómo llegan los eventos sin perderse y qué pasa si algo falla? |
+| 3 | [Observabilidad y seguridad](docs/actividad-4/03-observabilidad-y-seguridad.md) | ¿Cómo se diagnostica el flujo sin exponer datos sensibles? |
+| 4 | [Verificaciones automáticas](docs/actividad-4/04-verificaciones-automaticas.md) | ¿Qué reglas se comprueban solas en cada cambio? |
+| 5 | [Riesgos, resultados y próximos pasos](docs/actividad-4/05-riesgos-resultados-y-proximos-pasos.md) | ¿Qué riesgos hay, qué evidencia los respalda y qué sigue abierto? |
+| ADR | [ADR-006 a ADR-010](docs/actividad-4/adr) | ¿Qué decisiones de implementación se tomaron y qué se descartó? |
+
+---
+
 ## Estructura del repositorio
 
 ```
@@ -287,42 +402,24 @@ logistica-ultima-milla/
 ├── README.md
 ├── Architecture.md
 ├── Directory.Build.props
+├── docker-compose.yml
+├── .github/
+│   ├── workflows/ci.yml
+│   └── dependabot.yml
 ├── docs/
-│   ├── actividad-1/
-│   │   ├── 01-analisis-del-problema.md
-│   │   ├── 02-actores-y-necesidades.md
-│   │   ├── 03-alcance.md
-│   │   ├── 04-diagrama-de-contexto.md
-│   │   ├── 05-riesgos.md
-│   │   ├── 06-supuestos-y-decisiones.md
-│   │   └── diagramas/
-│   ├── actividad-2/
-│   │   ├── 01-catalogo-de-requisitos.md
-│   │   ├── 02-matriz-de-priorizacion.md
-│   │   ├── 03-escenarios-de-calidad.md
-│   │   ├── 04-comparacion-de-alternativas.md
-│   │   ├── 05-criterios-verificables.md
-│   │   ├── adr/
-│   │   │   └── ADR-001-estructura-de-la-plataforma.md
-│   │   └── diagramas/
-│   └── actividad-3/
-│       ├── 01-flujo-de-negocio.md
-│       ├── 02-lenguaje-ubicuo.md
-│       ├── 03-modelo-de-dominio.md
-│       ├── 04-invariantes-y-escenarios.md
-│       ├── 05-contextos-y-contratos.md
-│       ├── 06-casos-de-uso-puertos-adaptadores.md
-│       ├── adr/
-│       │   └── ADR-002 a ADR-005
-│       └── diagramas/
+│   ├── actividad-1/   (6 documentos y diagramas)
+│   ├── actividad-2/   (5 documentos, ADR-001 y diagramas)
+│   ├── actividad-3/   (6 documentos, ADR-002 a ADR-005 y diagramas)
+│   └── actividad-4/   (5 documentos, ADR-006 a ADR-010 y diagramas)
 ├── src/
 │   ├── Domain/
 │   ├── Application/
-│   └── Infrastructure/
+│   ├── Infrastructure/
+│   └── Api/
 └── tests/
     ├── Domain.Tests/
     ├── Application.Tests/
-    └── Integration.Tests/
+    └── Integration.Tests/   (incluye Architecture/)
 ```
 
 ---
@@ -362,3 +459,15 @@ logistica-ultima-milla/
 - [x] Architecture.md y ADR actualizados
 - [x] README actualizado con la propuesta y los diagramas
 - [ ] Video de sustentación entregado
+
+### Actividad 4
+- [x] Flujo implementado como vertical slice ejecutable
+- [x] Entrada conectada con el caso de uso, el dominio y la persistencia mediante los contratos
+- [x] Adaptador asíncrono con reintentos y mensajes fallidos
+- [x] Migraciones reproducibles
+- [x] Historial de cambios y decisiones de implementación documentadas (ADR-006 a ADR-010)
+- [x] Pruebas unitarias de las invariantes y de integración, con escenarios de error y de límite
+- [x] Riesgos con mitigación y evidencia
+- [x] Señales de observabilidad sin datos sensibles
+- [x] Comprobación automatizada de arquitectura y calidad, con resultados y riesgos residuales
+- [ ] Video de demostración y sustentación entregado
