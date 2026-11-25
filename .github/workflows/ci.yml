@@ -1,0 +1,70 @@
+# Integración continua: compila, audita dependencias y ejecuta todas las pruebas en cada cambio.
+# GitHub Actions define la variable CI=true; con ella, Directory.Build.props convierte las advertencias en errores.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Base de datos real para las pruebas de integración. Credenciales solo para este entorno efímero.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      LOGISTICA_TEST_POSTGRES: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres
+
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restaurar paquetes
+        run: dotnet restore
+
+      - name: Compilar (las advertencias son errores)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Buscar paquetes con vulnerabilidades conocidas
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerabilities.txt
+          if grep -q "has the following vulnerable packages" vulnerabilities.txt; then
+            echo "Hay paquetes con vulnerabilidades conocidas."
+            exit 1
+          fi
+
+      - name: Ejecutar las pruebas (incluye las de arquitectura)
+        run: dotnet test --no-build --configuration Release --logger "trx" --results-directory TestResults
+
+      - name: Guardar los resultados de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-de-pruebas
+          path: TestResults/*.trx

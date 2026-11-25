@@ -6,4 +6,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!--
+    Solo en integración continua (GitHub Actions define CI=true): las advertencias son errores
+    y se audita cada paquete, incluidos los transitivos.
+    Para reproducirlo en local: establezca CI=true y ejecute dotnet build con la opción no-incremental.
+  -->
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+  </PropertyGroup>
 </Project>

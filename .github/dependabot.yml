@@ -1,0 +1,11 @@
+# Propone actualizaciones de paquetes y de acciones cuando hay versiones nuevas o correcciones de seguridad.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
