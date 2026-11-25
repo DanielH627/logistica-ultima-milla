@@ -1,4 +1,5 @@
 using LogisticaUltimaMilla.Api.Contracts;
+using LogisticaUltimaMilla.Api.Observability;
 using LogisticaUltimaMilla.Api.Security;
 using LogisticaUltimaMilla.Application.Entregas;
 using Microsoft.AspNetCore.Mvc;
@@ -50,6 +51,7 @@ public static class AssignmentEndpoints
 
         if (result.IsSuccess)
         {
+            ApiMetrics.RecordAssignment("success");
             return Results.Ok(new AssignCourierResponse(
                 deliveryId,
                 request.CourierId,
@@ -57,6 +59,7 @@ public static class AssignmentEndpoints
                 result.NoticeQueued));
         }
 
+        ApiMetrics.RecordAssignment(result.ErrorCode ?? "UNKNOWN");
         return ToProblem(result);
     }
 
