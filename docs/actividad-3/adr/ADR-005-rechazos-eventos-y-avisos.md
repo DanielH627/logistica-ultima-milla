@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |-------|-------|
-| **Estado** | Aceptada, con revisión periódica (ver sección 9) |
+| **Estado** | Aceptada; la regla del evento fue ajustada por el ADR-007 en la Actividad 4 (ver sección 8) |
 | **Fecha** | 16 de noviembre de 2026 |
 | **Autor** | [Tu nombre completo] |
 | **Actividad** | Actividad 3: diseño y dominio |
@@ -106,8 +106,8 @@ Se adoptan tres reglas:
 
 ## 8. Decisiones pendientes relacionadas
 
-- Garantía de que el evento no se pierda (bandeja de salida, Actividad 4).
-- Política de reintento de los avisos.
+- ~~Garantía de que el evento no se pierda (bandeja de salida, Actividad 4).~~ **Resuelta en la Actividad 4 por el [ADR-007](../../actividad-4/adr/ADR-007-bandeja-de-salida-reintentos-y-mensajes-muertos.md):** el evento se guarda en la misma transacción que la entrega y un procesador lo entrega después. Las reglas 1 (rechazos como resultados) y 3 (el aviso no revierte la asignación) se mantienen; la regla 2 ("registrar después de guardar") queda reemplazada por la bandeja de salida.
+- ~~Política de reintento de los avisos.~~ **Resuelta por el ADR-007:** tres intentos con espera exponencial y estado `Dead`.
 
 ## 9. Condiciones de revisión
 

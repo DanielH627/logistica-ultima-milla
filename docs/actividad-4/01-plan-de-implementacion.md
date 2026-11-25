@@ -47,7 +47,15 @@ Que el dominio no cambie es la prueba de que el diseño de la Actividad 3 era co
 
 ## 5. Decisiones de implementación
 
-Cada decisión se registrará en un ADR con sus alternativas y trade-offs.
+Cada decisión se registró en un ADR con sus alternativas y trade-offs:
+
+| ADR | Decisiones del plan |
+|-----|---------------------|
+| [ADR-006](adr/ADR-006-persistencia-postgresql-y-migraciones.md) | D4-02, D4-03, D4-04 y AJ-04 |
+| [ADR-007](adr/ADR-007-bandeja-de-salida-reintentos-y-mensajes-muertos.md) | D4-05, D4-06 y AJ-01 a AJ-03 |
+| [ADR-008](adr/ADR-008-entrada-http-y-clave-de-api.md) | D4-01 y D4-07 |
+| [ADR-009](adr/ADR-009-observabilidad-sin-datos-sensibles.md) | D4-08 |
+| [ADR-010](adr/ADR-010-verificaciones-automaticas.md) | D4-09, D4-10 y D4-11 |
 
 | ID | Decisión | Alternativa descartada | Razón principal |
 |----|----------|------------------------|-----------------|
@@ -122,6 +130,7 @@ El enunciado pide decidir, ante cada fallo, si se reintenta, se registra, se dev
 
 El enunciado pide seleccionar los videos de implementación según las decisiones tomadas, y justificar qué patrones o tecnologías aplican y cuáles no.
 
+> Esta tabla se basa en los **títulos** de los videos, porque no he visto su contenido. Se ajustará cuando se revisen.
 
 | Video | Tema | ¿Aplica? | Justificación |
 |-------|------|----------|---------------|
@@ -194,18 +203,24 @@ Cada paso termina con una compilación y una ejecución de las pruebas, y con su
 
 ## 13. Trazabilidad entre el diseño y la implementación
 
-Esta tabla se completa a medida que se construye.
+Estado al cierre de la Actividad 4.
 
 | Elemento del diseño | Documento | Implementación | Estado |
 |---------------------|-----------|----------------|--------|
 | `Delivery` y sus invariantes | `03-modelo-de-dominio.md` | `src/Domain/Entregas` | Hecho |
+| `Route` y su capacidad | `03-modelo-de-dominio.md` | `src/Domain/Ruteo` | Hecho |
 | Caso de uso `AssignCourier` | `06-casos-de-uso-puertos-adaptadores.md` | `src/Application/Entregas` | Hecho, ajustado por AJ-01 a AJ-03 |
 | Repositorio de entregas | Puerto `IDeliveryRepository` | `PostgresDeliveryRepository` | Hecho |
 | Consulta y reserva en Ruteo | Contratos C2 y C3 | `PostgresCourierRoutes` | Hecho |
-| Evento `DeliveryAssigned` | Contrato C4 | Bandeja de salida (`transversal.bandeja_salida`) | Guardado: hecho. Entrega por el procesador: pendiente |
-| Solicitud de aviso | Contrato C5 | Procesador y adaptador | Pendiente |
-| Entrada del coordinador | Contrato de aplicación | Punto de entrada HTTP | Pendiente |
-| Escenarios EA01 a EA15 | `04-invariantes-y-escenarios.md` | Pruebas | Parcial: 67 pruebas, con persistencia real para EA01, EA08, EA09, EA11 y EA12 |
+| Evento `DeliveryAssigned` | Contrato C4 | Bandeja de salida y `EventHistoryHandler` | Hecho (ADR-007) |
+| Solicitud de aviso | Contrato C5 | `DeliveryAssignedNotificationHandler` y `SimulatedNotificationGateway` | Hecho; el sistema externo es simulado |
+| Entrada del coordinador | Contrato de aplicación | `POST /api/v1/deliveries/{id}/assignment` | Hecho (ADR-008) |
+| Esquema de datos por módulo | AJ-04 | Migraciones V001 y V002 | Hecho (ADR-006) |
+| Datos de demostración | AJ-05 | `DemoDataSeeder` | Hecho |
+| Reservas con vencimiento | AJ-06 | Sin implementar | **Aplazado**: riesgo residual RI08 |
+| Observabilidad | D4-08 | `src/Api/Observability`, `OutboxMetrics` | Hecho (ADR-009) |
+| Pruebas de arquitectura e integración continua | D4-09, D4-10 | `tests/Integration.Tests/Architecture`, `.github/workflows/ci.yml` | Hecho (ADR-010) |
+| Escenarios EA01 a EA15 | `04-invariantes-y-escenarios.md` | Pruebas | 122 pruebas correctas en total, con persistencia real |
 
 ## 14. Por confirmar
 
